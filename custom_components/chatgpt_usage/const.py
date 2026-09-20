@@ -4,7 +4,7 @@ from typing import Final
 
 DOMAIN: Final = "chatgpt_usage"
 NAME: Final = "ChatGPT Usage"
-VERSION: Final = "0.1.0"
+VERSION: Final = "0.1.2"
 
 PROVIDER_REMOTE: Final = "remote"
 PROVIDER_LOCAL: Final = "local"
@@ -37,10 +37,10 @@ CONF_USE_HTTPS: Final = "use_https"
 CONF_HELPER_ID: Final = "helper_id"
 
 CONF_UPDATE_INTERVAL: Final = "update_interval"
-DEFAULT_UPDATE_INTERVAL: Final = 3600
-MIN_UPDATE_INTERVAL: Final = 900
+DEFAULT_UPDATE_INTERVAL: Final = 300
+MIN_UPDATE_INTERVAL: Final = 300
 MAX_UPDATE_INTERVAL: Final = 14400
-POLL_OPTIONS: Final = (900, 1800, 3600, 7200, 14400)
+POLL_OPTIONS: Final = (300, 900, 1800, 3600, 7200, 14400)
 
 LOCAL_API_VERSION: Final = 1
 LOCAL_HEALTH_PATH: Final = "/api/v1/health"
@@ -48,8 +48,9 @@ LOCAL_USAGE_PATH: Final = "/api/v1/usage"
 LOCAL_DEFAULT_PORT: Final = 8765
 
 EVENT_USAGE_RESET: Final = "chatgpt_usage_reset"
+EVENT_ACCOUNT_RECOVERED: Final = "chatgpt_usage_account_recovered"
 STORAGE_VERSION: Final = 1
 STORAGE_KEY_TEMPLATE: Final = "chatgpt_usage.reset_state.{entry_id}"
 
 REQUEST_TIMEOUT_SECONDS: Final = 20
-USER_AGENT: Final = "HomeAssistant-ChatGPTUsage/0.1.0"
+USER_AGENT: Final = f"HomeAssistant-ChatGPTUsage/{VERSION}"

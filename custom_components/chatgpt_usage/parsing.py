@@ -118,7 +118,7 @@ def parse_app_server_rate_limits(
             if _slug(limit_id) == "codex" and isinstance(main, dict):
                 continue
             name = _safe_text(snapshot.get("limitName"), 120) or limit_id.replace("_", " ").title()
-            windows.extend(_parse_app_snapshot(limit_id, name, snapshot, main_limit=False))
+            windows.extend(_parse_app_snapshot(limit_id, name, snapshot, main_limit=_slug(limit_id) == "codex"))
 
     if not windows:
         raise UsageSchemaError("Codex app-server returned no usable rate-limit windows")
@@ -225,6 +225,7 @@ def _parse_limit_windows(
                 kind="usage",
                 allowed=allowed,
                 limit_reached=reached,
+                is_main=main_limit,
             )
         )
     return windows
@@ -268,6 +269,7 @@ def _parse_app_snapshot(
                 kind="usage",
                 allowed=None,
                 limit_reached=reached if reached else None,
+                is_main=main_limit,
             )
         )
     return windows

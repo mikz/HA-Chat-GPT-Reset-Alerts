@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
+from math import isfinite
 from typing import Any
 
 
@@ -21,6 +22,8 @@ class UsageWindow:
     kind: str = "usage"
     allowed: bool | None = None
     limit_reached: bool | None = None
+    is_main: bool = True
+    reset_status: str = "unknown"
 
     def to_safe_dict(self) -> dict[str, Any]:
         data = asdict(self)
@@ -63,16 +66,26 @@ class PersistedWindowState:
     used_percent: float | None = None
     remaining_percent: float | None = None
     last_event_key: str | None = None
+    last_reset_at: str | None = None
+    is_main: bool = True
+    limited: bool | None = None
 
     @classmethod
     def from_window(
-        cls, window: UsageWindow, last_event_key: str | None = None
+        cls, window: UsageWindow, last_event_key: str | None = None,
+        last_reset_at: str | None = None,
     ) -> "PersistedWindowState":
         return cls(
             reset_at=window.reset_at.isoformat() if window.reset_at else None,
             used_percent=window.used_percent,
             remaining_percent=window.remaining_percent,
             last_event_key=last_event_key,
+            last_reset_at=last_reset_at,
+            is_main=window.is_main,
+            limited=(
+                window.limit_reached is True or window.allowed is False
+                or (window.used_percent is not None and window.used_percent >= 100)
+            ),
         )
 
     @classmethod
@@ -82,6 +95,9 @@ class PersistedWindowState:
             used_percent=to_float(data.get("used_percent")),
             remaining_percent=to_float(data.get("remaining_percent")),
             last_event_key=data.get("last_event_key"),
+            last_reset_at=data.get("last_reset_at"),
+            is_main=data.get("is_main", True),
+            limited=data.get("limited"),
         )
 
     def as_dict(self) -> dict[str, Any]:
@@ -90,6 +106,9 @@ class PersistedWindowState:
             "used_percent": self.used_percent,
             "remaining_percent": self.remaining_percent,
             "last_event_key": self.last_event_key,
+            "last_reset_at": self.last_reset_at,
+            "is_main": self.is_main,
+            "limited": self.limited,
         }
 
 
@@ -131,6 +150,7 @@ def to_float(value: Any) -> float | None:
     try:
         if value is None or isinstance(value, bool):
             return None
-        return float(value)
+        result = float(value)
+        return result if isfinite(result) else None
     except (TypeError, ValueError):
         return None

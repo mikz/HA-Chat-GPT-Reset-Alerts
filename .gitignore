@@ -1,8 +1,11 @@
 __pycache__/
 *.py[cod]
 .pytest_cache/
+.testmondata*
 .ruff_cache/
 .venv/
+.venv-ha/
+dist/
 venv/
 .idea/
 .vscode/

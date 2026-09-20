@@ -20,6 +20,7 @@ async def async_setup_entry(
         [
             ChatGPTConnectedBinarySensor(coordinator),
             ChatGPTLimitReachedBinarySensor(coordinator),
+            ChatGPTUsableBinarySensor(coordinator),
             ChatGPTCreditsAvailableBinarySensor(coordinator),
         ]
     )
@@ -69,6 +70,27 @@ class ChatGPTLimitReachedBinarySensor(ChatGPTUsageEntity, BinarySensorEntity):
                 for window in data.windows
             )
         )
+
+
+class ChatGPTUsableBinarySensor(ChatGPTUsageEntity, BinarySensorEntity):
+    """Whether the reported ordinary Codex allowance is available."""
+
+    _attr_name = "Usable"
+    _attr_icon = "mdi:check-circle-outline"
+
+    def __init__(self, coordinator: ChatGPTUsageCoordinator) -> None:
+        super().__init__(coordinator)
+        identifier = self._entry.unique_id or self._entry.entry_id
+        self._attr_unique_id = f"{identifier}_usable"
+
+    @property
+    def is_on(self) -> bool | None:
+        status = self.coordinator.account_status
+        return None if status == "incomplete" else status == "available"
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        return {"status": self.coordinator.account_status}
 
 
 class ChatGPTCreditsAvailableBinarySensor(ChatGPTUsageEntity, BinarySensorEntity):

@@ -1,4 +1,6 @@
 {
-  "name": "AI Usage",
-  "render_readme": true
+  "name": "ChatGPT Usage (mikz)",
+  "render_readme": true,
+  "zip_release": true,
+  "filename": "chatgpt_usage.zip"
 }

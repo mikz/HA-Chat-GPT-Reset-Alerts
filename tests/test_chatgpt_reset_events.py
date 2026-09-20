@@ -12,7 +12,7 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 
-from custom_components.chatgpt_usage.const import EVENT_USAGE_RESET
+from custom_components.chatgpt_usage.const import EVENT_ACCOUNT_RECOVERED, EVENT_USAGE_RESET
 from custom_components.chatgpt_usage.models import ChatGPTUsageData, UsageWindow
 
 NOW = datetime(2026, 9, 2, 12, 0, tzinfo=UTC)
@@ -86,6 +86,11 @@ def _coordinator(coordinator_class, entry_id="entry-a", title="Personal", provid
     coordinator.hass = SimpleNamespace(bus=SimpleNamespace(async_fire=Mock()))
     coordinator._store = SimpleNamespace(async_save=AsyncMock())
     coordinator._window_state = {}
+    coordinator._last_known_usable = None
+    coordinator.last_recovered_at = None
+    coordinator._pending_events = []
+    coordinator._ready = True
+    coordinator._history_imported = True
     return coordinator
 
 
@@ -130,6 +135,7 @@ def test_reset_event_preserves_payload_and_adds_only_entry_metadata(coordinator_
         "previous_reset_at": OLD_RESET.isoformat(),
         "new_reset_at": NEW_RESET.isoformat(),
         "confidence": "timestamp_rollover",
+        "observed_at": NOW.isoformat(),
     })
 
 
@@ -156,7 +162,7 @@ def test_no_startup_event_or_duplicate_reset_event(coordinator_class):
     _reset(coordinator)
     _reset(coordinator)
     coordinator.hass.bus.async_fire.assert_called_once()
-    assert coordinator._store.async_save.await_count == 2
+    assert coordinator._store.async_save.await_count == 3
 
 
 def test_event_uses_current_entry_title_without_changing_identifier(coordinator_class):
@@ -167,3 +173,75 @@ def test_event_uses_current_entry_title_without_changing_identifier(coordinator_
     event = coordinator.hass.bus.async_fire.call_args.args[1]
     assert event["entry_id"] == "entry-a"
     assert event["entry_title"] == "Renamed account"
+
+
+def test_usable_again_fires_once_and_survives_reload(coordinator_class):
+    coordinator = _coordinator(coordinator_class)
+    asyncio.run(coordinator._process_resets(_data(100, OLD_RESET), NOW - timedelta(minutes=10)))
+    assert coordinator.account_status == "limited"
+    asyncio.run(coordinator._process_resets(_data(0, NEW_RESET), NOW))
+    events = coordinator.hass.bus.async_fire.call_args_list
+    recovered = [event.args[1] for event in events if event.args[0] == EVENT_ACCOUNT_RECOVERED]
+    assert len(recovered) == 1
+    assert recovered[0]["remaining_percent"] == 100
+    assert coordinator.last_reset_at("weekly") == NOW
+    assert coordinator.last_recovered_at == NOW
+
+    stored = coordinator._store.async_save.call_args.args[0]
+    restarted = _coordinator(coordinator_class)
+    restarted._store.async_load = AsyncMock(return_value=stored)
+    asyncio.run(restarted.async_initialize())
+    asyncio.run(restarted._process_resets(_data(0, NEW_RESET + timedelta(minutes=5)), NOW + timedelta(minutes=5)))
+    restarted.hass.bus.async_fire.assert_not_called()
+    assert restarted.last_reset_at("weekly") == NOW
+    assert restarted.last_recovered_at == NOW
+
+
+def test_first_healthy_sample_never_sends_recovery(coordinator_class):
+    coordinator = _coordinator(coordinator_class)
+    asyncio.run(coordinator._process_resets(_data(0, NEW_RESET), NOW))
+    coordinator.hass.bus.async_fire.assert_not_called()
+    assert coordinator.last_reset_at() is None
+
+
+def test_recovery_waits_for_ha_start_and_pending_event_survives_restart(coordinator_class):
+    coordinator = _coordinator(coordinator_class)
+    coordinator._ready = False
+    asyncio.run(coordinator._process_resets(_data(100, OLD_RESET), NOW - timedelta(minutes=10)))
+    asyncio.run(coordinator._process_resets(_data(0, NEW_RESET), NOW))
+    coordinator.hass.bus.async_fire.assert_not_called()
+    stored = coordinator._store.async_save.call_args.args[0]
+    assert any(event["type"] == EVENT_ACCOUNT_RECOVERED for event in stored["pending_events"])
+    restarted = _coordinator(coordinator_class)
+    restarted._store.async_load = AsyncMock(return_value=stored)
+    asyncio.run(restarted.async_initialize())
+    asyncio.run(restarted.async_start(restarted.hass))
+    asyncio.run(restarted.async_start(restarted.hass))
+    events = restarted.hass.bus.async_fire.call_args_list
+    assert sum(event.args[0] == EVENT_ACCOUNT_RECOVERED for event in events) == 1
+
+
+def test_missing_main_data_keeps_recovery_armed_without_false_alert(coordinator_class):
+    coordinator = _coordinator(coordinator_class)
+    asyncio.run(coordinator._process_resets(_data(100, OLD_RESET), NOW - timedelta(minutes=10)))
+    asyncio.run(coordinator._process_resets(ChatGPTUsageData(), NOW))
+    assert coordinator.account_status == "incomplete"
+    coordinator.hass.bus.async_fire.assert_not_called()
+    asyncio.run(coordinator._process_resets(_data(5, NEW_RESET), NOW + timedelta(minutes=5)))
+    assert sum(call.args[0] == EVENT_ACCOUNT_RECOVERED for call in coordinator.hass.bus.async_fire.call_args_list) == 1
+
+
+def test_two_main_windows_emit_one_account_recovery_after_both_are_usable(coordinator_class):
+    from dataclasses import replace
+    coordinator = _coordinator(coordinator_class)
+    def both(weekly, short):
+        return ChatGPTUsageData(windows=(
+            _data(weekly, NEW_RESET).windows[0],
+            replace(_data(short, NEW_RESET).windows[0], id="five_hour", duration_seconds=18000),
+        ))
+    asyncio.run(coordinator._process_resets(both(100, 100), NOW))
+    asyncio.run(coordinator._process_resets(both(0, 100), NOW + timedelta(minutes=5)))
+    assert all(call.args[0] != EVENT_ACCOUNT_RECOVERED for call in coordinator.hass.bus.async_fire.call_args_list)
+    asyncio.run(coordinator._process_resets(both(0, 0), NOW + timedelta(minutes=10)))
+    recovered = [call for call in coordinator.hass.bus.async_fire.call_args_list if call.args[0] == EVENT_ACCOUNT_RECOVERED]
+    assert len(recovered) == 1

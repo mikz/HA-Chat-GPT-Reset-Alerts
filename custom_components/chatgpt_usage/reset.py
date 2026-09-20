@@ -47,12 +47,21 @@ def detect_reset(
     )
 
     confidence: str | None = None
-    if reset_moved and old_window_due:
+    observed_drop = old_used is not None and new_used is not None and new_used < old_used
+    if reset_moved and old_window_due and observed_drop:
         confidence = "timestamp_rollover"
     elif reset_moved and (usage_drop or remaining_jump):
         confidence = "timestamp_and_usage"
-    elif old_reset is None and new_reset is None and very_strong_drop:
+    elif very_strong_drop:
         confidence = "strong_usage_fallback"
+    elif old_used is not None and old_used >= 100 and new_used is not None and new_used < 100 and (
+        current.allowed is not False and current.limit_reached is not True
+    ):
+        confidence = "usage_recovered"
+    elif old_used is not None and old_used > 0 and new_used == 0 and (
+        old_window_due or reset_moved or current.reset_status == "awaiting_usage"
+    ):
+        confidence = "observed_refill"
 
     if confidence is None:
         return None

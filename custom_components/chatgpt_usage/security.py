@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Any
 
 _SECRET_KEYS = {
@@ -15,7 +16,7 @@ _SECRET_KEYS = {
 
 
 def redact_mapping(value: Any) -> Any:
-    if isinstance(value, dict):
+    if isinstance(value, Mapping):
         return {
             key: ("**REDACTED**" if str(key).casefold() in _SECRET_KEYS else redact_mapping(item))
             for key, item in value.items()

@@ -13,13 +13,15 @@ permissions:
 jobs:
   python:
     runs-on: ubuntu-latest
+    env:
+      COVERAGE_CORE: ctrace
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
       - run: python -m pip install --upgrade pip
-      - run: pip install pytest ruff
+      - run: pip install pytest pytest-testmon ruff
       - run: ruff check custom_components tests
       - run: pytest -q
 
@@ -28,6 +30,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: home-assistant/actions/hassfest@master
+
+  runtime:
+    runs-on: ubuntu-latest
+    env:
+      COVERAGE_CORE: ctrace
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+      - run: pip install homeassistant==2026.9.2 pytest-homeassistant-custom-component==0.13.365 pytest-testmon
+      - run: python -m pytest --testmon-env=ha2026.9.2 -q -o asyncio_mode=auto
 
 # HACS validation is intentionally omitted because this private repository
 # contains two separate custom integrations. HACS distribution should split

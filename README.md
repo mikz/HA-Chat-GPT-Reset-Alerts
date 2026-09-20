@@ -1,5 +1,19 @@
 # AI Usage for Home Assistant
 
+## mikz fork: ChatGPT Usage 0.1.2
+
+This fork adds stable reset timestamps, persisted **last observed reset** sensors,
+an account **Usable** sensor, and recovery-only events. It also fixes credential
+redaction for Home Assistant config entries and adds tests on HA 2026.9.2.
+
+For HACS, add `mikz/HA-Chat-GPT-Reset-Alerts` as a custom **Integration** repository
+and install release `v0.1.2`. Its `chatgpt_usage.zip` contains only ChatGPT Usage.
+Keep the existing `chatgpt_usage` config entries when switching repository sources;
+their credentials, entity IDs, and history continue to work. Restart HA after installation.
+
+Read [observed resets, recovery notifications, and deployment](docs/stable-observations.md).
+The Claude integration and helpers below remain available for manual installation.
+
 Home Assistant integrations for monitoring subscription usage and reset times for:
 
 - **ChatGPT / Codex**
@@ -7,7 +21,9 @@ Home Assistant integrations for monitoring subscription usage and reset times fo
 
 The primary goal is to let Home Assistant notify you when an AI usage allowance resets.
 
-Both integrations default to **one poll per hour** and persist reset state so restarting Home Assistant does not create a false reset alert.
+ChatGPT Usage defaults to **one poll every five minutes**; existing entries keep their
+configured interval until changed in Options. Claude Usage defaults to one poll per hour.
+Both persist reset state so restarting Home Assistant does not create a false reset alert.
 
 > **Unofficial community project.** This repository is not affiliated with, endorsed by, or supported by OpenAI or Anthropic.
 
@@ -218,11 +234,12 @@ mode: queued
 Default:
 
 ```text
-3600 seconds / 1 hour
+300 seconds / 5 minutes
 ```
 
 Options:
 
+- 5 minutes
 - 15 minutes
 - 30 minutes
 - 1 hour
@@ -553,9 +570,13 @@ Tests cover normalization, dynamic limits, official Codex app-server parsing, re
 
 ```bash
 python -m compileall custom_components tests
-pytest -q
+COVERAGE_CORE=ctrace python -m pytest -q
 ruff check custom_components tests
 ```
+
+Install `pytest`, `pytest-testmon`, and `ruff` for local tests. Testmon is enabled
+in `pyproject.toml`. The runtime CI job also runs the suite with Home Assistant
+2026.9.2 and `pytest-homeassistant-custom-component==0.13.365`.
 
 ---
 

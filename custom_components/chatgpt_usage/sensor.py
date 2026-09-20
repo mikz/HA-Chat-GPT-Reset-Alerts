@@ -15,7 +15,7 @@ from .coordinator import ChatGPTUsageCoordinator
 from .entity import ChatGPTUsageEntity
 from .models import UsageWindow
 
-_WINDOW_METRICS = ("usage", "remaining", "reset", "time_remaining")
+_WINDOW_METRICS = ("usage", "remaining", "reset", "time_remaining", "last_reset")
 
 
 async def async_setup_entry(
@@ -41,6 +41,8 @@ async def async_setup_entry(
             ("plan", ChatGPTPlanSensor),
             ("credit_balance", ChatGPTCreditBalanceSensor),
             ("reset_credits", ChatGPTResetCreditsSensor),
+            ("last_reset", ChatGPTLastResetSensor),
+            ("last_recovered", ChatGPTLastRecoveredSensor),
         ):
             if key not in known:
                 known.add(key)
@@ -64,6 +66,7 @@ class ChatGPTWindowSensor(ChatGPTUsageEntity, SensorEntity):
             "remaining": "Remaining",
             "reset": "Reset",
             "time_remaining": "Time remaining",
+            "last_reset": "Last reset",
         }[metric]
         self._attr_name = f"{label} {suffix}"
         identifier = self._entry.unique_id or self._entry.entry_id
@@ -72,7 +75,7 @@ class ChatGPTWindowSensor(ChatGPTUsageEntity, SensorEntity):
             self._attr_native_unit_of_measurement = PERCENTAGE
             self._attr_state_class = SensorStateClass.MEASUREMENT
             self._attr_icon = "mdi:gauge"
-        elif metric == "reset":
+        elif metric in ("reset", "last_reset"):
             self._attr_device_class = SensorDeviceClass.TIMESTAMP
             self._attr_icon = "mdi:clock-refresh-outline"
         else:
@@ -86,6 +89,8 @@ class ChatGPTWindowSensor(ChatGPTUsageEntity, SensorEntity):
 
     @property
     def native_value(self) -> Any:
+        if self.metric == "last_reset":
+            return self.coordinator.last_reset_at(self.window_id)
         window = self._window
         if window is None:
             return None
@@ -110,7 +115,39 @@ class ChatGPTWindowSensor(ChatGPTUsageEntity, SensorEntity):
             "window_seconds": window.duration_seconds,
             "allowed": window.allowed,
             "limit_reached": window.limit_reached,
+            "is_main": window.is_main,
+            "reset_status": window.reset_status,
         }
+
+
+class ChatGPTLastResetSensor(ChatGPTUsageEntity, SensorEntity):
+    """Most recent ordinary allowance refill observed by Home Assistant."""
+
+    _attr_name = "Last reset"
+    _attr_device_class = SensorDeviceClass.TIMESTAMP
+    _attr_icon = "mdi:history"
+
+    def __init__(self, coordinator: ChatGPTUsageCoordinator) -> None:
+        super().__init__(coordinator)
+        identifier = self._entry.unique_id or self._entry.entry_id
+        self._attr_unique_id = f"{identifier}_last_reset"
+
+    @property
+    def native_value(self) -> datetime | None:
+        return self.coordinator.last_reset_at()
+
+
+class ChatGPTLastRecoveredSensor(ChatGPTLastResetSensor):
+    _attr_name = "Last usable again"
+
+    def __init__(self, coordinator: ChatGPTUsageCoordinator) -> None:
+        super().__init__(coordinator)
+        identifier = self._entry.unique_id or self._entry.entry_id
+        self._attr_unique_id = f"{identifier}_last_recovered"
+
+    @property
+    def native_value(self) -> datetime | None:
+        return self.coordinator.last_recovered_at
 
 
 class ChatGPTLastUpdateSensor(ChatGPTUsageEntity, SensorEntity):
