@@ -102,4 +102,3 @@ async def test_history_import_resolves_renamed_entities_without_notifications(ha
     query = recorder.async_add_executor_job.call_args.args[0]
     assert query.keywords["entity_ids"] == [entity.entity_id]
     assert query.keywords["no_attributes"] is True
-
