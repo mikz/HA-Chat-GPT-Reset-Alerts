@@ -44,10 +44,16 @@ recoveries from different accounts do not cancel or suppress each other. Keep
 
 ## Polling
 
-Five minutes is the default and minimum interval. Existing intervals remain
+Five minutes is the default and minimum interval in Options. Existing intervals remain
 unchanged until updated through the integration's Options. Provider rate-limit
 backoff still takes precedence. The observed time can therefore be later than
 the actual provider reset.
+
+The integration also supports HA's standard polling controls: disable polling in
+the account entry's **System options**, then call `homeassistant.update_entity`
+from an automation with your chosen schedule. Target one usage sensor per account;
+the shared coordinator updates all of that account's entities. See
+[Polling](../README.md#polling) for the configuration steps and naming conventions.
 
 ## Release and rollback
 

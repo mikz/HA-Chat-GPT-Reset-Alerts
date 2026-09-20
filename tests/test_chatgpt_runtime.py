@@ -102,3 +102,50 @@ async def test_history_import_resolves_renamed_entities_without_notifications(ha
     query = recorder.async_add_executor_job.call_args.args[0]
     assert query.keywords["entity_ids"] == [entity.entity_id]
     assert query.keywords["no_attributes"] is True
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("disable_polling", [False, True])
+async def test_native_polling_controls(hass, enable_custom_integrations, disable_polling):
+    """System options stop scheduled polls; update_entity still refreshes the account."""
+    from homeassistant.setup import async_setup_component
+    from pytest_homeassistant_custom_component.common import async_fire_time_changed
+
+    entry = MockConfigEntry(
+        domain="chatgpt_usage", title="Polling test", unique_id="polling-test",
+        data={"provider": "remote"}, options={"update_interval": 900},
+        pref_disable_polling=disable_polling,
+    )
+    entry.add_to_hass(hass)
+    now = datetime.now(UTC)
+    reset = now + timedelta(days=5)
+    provider = AsyncMock()
+    provider.async_get_usage.return_value = usage(10, reset)
+    assert await async_setup_component(hass, "homeassistant", {})
+    with patch("custom_components.chatgpt_usage.coordinator.RemoteOpenAIProvider", return_value=provider):
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+        await hass.async_start()
+        await hass.async_block_till_done()
+        assert provider.async_get_usage.await_count == 1
+
+        # A non-default interval must not keep polling at the five-minute default.
+        async_fire_time_changed(hass, now + timedelta(seconds=301))
+        await hass.async_block_till_done()
+        assert provider.async_get_usage.await_count == 1
+        async_fire_time_changed(hass, now + timedelta(seconds=901))
+        await hass.async_block_till_done()
+        assert provider.async_get_usage.await_count == (1 if disable_polling else 2)
+
+        registry = er.async_get(hass)
+        sensor = registry.async_get_entity_id("sensor", "chatgpt_usage", "polling-test_weekly_usage")
+        remaining = registry.async_get_entity_id("sensor", "chatgpt_usage", "polling-test_weekly_remaining")
+        provider.async_get_usage.reset_mock()
+        provider.async_get_usage.return_value = usage(20, reset)
+        await hass.services.async_call(
+            "homeassistant", "update_entity", {"entity_id": sensor}, blocking=True,
+        )
+        await hass.async_block_till_done()
+        provider.async_get_usage.assert_awaited_once()
+        assert float(hass.states.get(sensor).state) == 20
+        assert float(hass.states.get(remaining).state) == 80

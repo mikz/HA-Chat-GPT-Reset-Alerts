@@ -231,22 +231,32 @@ mode: queued
 
 ## Polling
 
-Default:
+ChatGPT Usage polls each account every five minutes by default. Under the account's
+**Configure** options, **Polling interval (seconds)** accepts 300–14,400 seconds
+for Remote OpenAI. Local Codex offers 5, 15, 30, 60, 120, or 240 minutes.
 
-```text
-300 seconds / 5 minutes
-```
+For a schedule controlled by Home Assistant, use its standard
+[custom polling procedure](https://www.home-assistant.io/common-tasks/general/#defining-a-custom-polling-interval):
 
-Options:
+1. Open **Settings → Devices & services** and select ChatGPT Usage.
+2. Open the account entry's **System options** and disable polling.
+3. Create an automation with your preferred trigger and conditions.
+4. Add the `homeassistant.update_entity` action and select one usage sensor for
+   each account you want to refresh.
 
-- 5 minutes
-- 15 minutes
-- 30 minutes
-- 1 hour
-- 2 hours
-- 4 hours
+All entities for an account share one coordinator, so updating one of its usage
+sensors refreshes the account's other entities too. Selecting every entity is
+unnecessary. The **Refresh usage** button also works with automatic polling
+disabled. Provider rate-limit backoff still applies to refresh requests.
 
-With hourly polling, a reset at 14:17 may be detected at the 15:00 poll. The reset entity still contains the exact upstream reset timestamp.
+The coordinator uses HA's standard `update_interval` parameter; the integration's
+saved option has the same name. The older YAML platform option `scan_interval`
+does not configure this UI-based integration. See HA's
+[polling implementation guidance](https://developers.home-assistant.io/docs/core/integration-quality-scale/rules/appropriate-polling/).
+
+With hourly polling, a reset at 14:17 might be observed at 15:00. **Last reset**
+records that observation time; **Reset** shows the provider's scheduled deadline
+when one is reported.
 
 ---
 
