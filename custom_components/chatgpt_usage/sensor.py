@@ -14,6 +14,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from .coordinator import ChatGPTUsageCoordinator
 from .entity import ChatGPTUsageEntity
 from .models import UsageWindow
+from .observation import access_status
 
 _WINDOW_METRICS = ("usage", "remaining", "reset", "time_remaining", "last_reset")
 
@@ -43,6 +44,7 @@ async def async_setup_entry(
             ("reset_credits", ChatGPTResetCreditsSensor),
             ("last_reset", ChatGPTLastResetSensor),
             ("last_recovered", ChatGPTLastRecoveredSensor),
+            ("account_status", ChatGPTAccountStatusSensor),
         ):
             if key not in known:
                 known.add(key)
@@ -82,6 +84,13 @@ class ChatGPTWindowSensor(ChatGPTUsageEntity, SensorEntity):
             self._attr_device_class = SensorDeviceClass.DURATION
             self._attr_native_unit_of_measurement = UnitOfTime.SECONDS
             self._attr_icon = "mdi:timer-sand"
+            self._attr_entity_category = EntityCategory.DIAGNOSTIC
+            self._attr_entity_registry_enabled_default = False
+            self._attr_suggested_display_precision = 0
+
+    @property
+    def available(self) -> bool:
+        return self.metric == "last_reset" or super().available
 
     @property
     def _window(self) -> UsageWindow | None:
@@ -131,6 +140,11 @@ class ChatGPTLastResetSensor(ChatGPTUsageEntity, SensorEntity):
         super().__init__(coordinator)
         identifier = self._entry.unique_id or self._entry.entry_id
         self._attr_unique_id = f"{identifier}_last_reset"
+
+    @property
+    def available(self) -> bool:
+        """A stored observation remains valid when the provider cannot be polled."""
+        return True
 
     @property
     def native_value(self) -> datetime | None:
@@ -187,7 +201,6 @@ class ChatGPTPlanSensor(ChatGPTUsageEntity, SensorEntity):
 
 class ChatGPTCreditBalanceSensor(ChatGPTUsageEntity, SensorEntity):
     _attr_name = "Credit balance"
-    _attr_entity_category = EntityCategory.DIAGNOSTIC
     _attr_icon = "mdi:credit-card-outline"
     _attr_native_unit_of_measurement = "credits"
     _attr_state_class = SensorStateClass.MEASUREMENT
@@ -206,7 +219,6 @@ class ChatGPTCreditBalanceSensor(ChatGPTUsageEntity, SensorEntity):
 
 class ChatGPTResetCreditsSensor(ChatGPTUsageEntity, SensorEntity):
     _attr_name = "Reset credits available"
-    _attr_entity_category = EntityCategory.DIAGNOSTIC
     _attr_icon = "mdi:restore"
     _attr_native_unit_of_measurement = "resets"
     _attr_state_class = SensorStateClass.MEASUREMENT
@@ -220,3 +232,22 @@ class ChatGPTResetCreditsSensor(ChatGPTUsageEntity, SensorEntity):
     @property
     def native_value(self) -> int | None:
         return self.coordinator.data.available_reset_credits if self.coordinator.data else None
+
+
+class ChatGPTAccountStatusSensor(ChatGPTUsageEntity, SensorEntity):
+    """One native status entity for account selection and status history."""
+
+    _attr_translation_key = "account_status"
+    _attr_device_class = SensorDeviceClass.ENUM
+    _attr_options = ["available", "credits_available", "limited", "blocked"]
+    _attr_icon = "mdi:account-check-outline"
+
+    def __init__(self, coordinator: ChatGPTUsageCoordinator) -> None:
+        super().__init__(coordinator)
+        identifier = self._entry.unique_id or self._entry.entry_id
+        self._attr_unique_id = f"{identifier}_account_status"
+
+    @property
+    def native_value(self) -> str | None:
+        data = self.coordinator.data
+        return access_status(data, self.coordinator.account_status) if data else None

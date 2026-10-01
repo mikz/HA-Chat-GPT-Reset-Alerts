@@ -17,7 +17,7 @@ async def async_setup_entry(hass: "HomeAssistant", entry: "ConfigEntry") -> bool
     from homeassistant.helpers.start import async_at_started
     from .coordinator import ChatGPTUsageCoordinator
 
-    platforms = [Platform.SENSOR, Platform.BINARY_SENSOR, Platform.BUTTON]
+    platforms = [Platform.SENSOR, Platform.BINARY_SENSOR, Platform.BUTTON, Platform.EVENT]
     coordinator = ChatGPTUsageCoordinator(hass, entry)
     await coordinator.async_initialize()
     await coordinator.async_config_entry_first_refresh()
@@ -31,7 +31,7 @@ async def async_setup_entry(hass: "HomeAssistant", entry: "ConfigEntry") -> bool
 async def async_unload_entry(hass: "HomeAssistant", entry: "ConfigEntry") -> bool:
     from homeassistant.const import Platform
 
-    platforms = [Platform.SENSOR, Platform.BINARY_SENSOR, Platform.BUTTON]
+    platforms = [Platform.SENSOR, Platform.BINARY_SENSOR, Platform.BUTTON, Platform.EVENT]
     unload_ok = await hass.config_entries.async_unload_platforms(entry, platforms)
     if unload_ok:
         await entry.runtime_data.async_shutdown()

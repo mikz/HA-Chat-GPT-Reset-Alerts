@@ -62,8 +62,8 @@ def parse_openai_usage(
     credits_raw = raw.get("credits")
     if isinstance(credits_raw, dict):
         credits = CreditStatus(
-            has_credits=bool(credits_raw.get("has_credits", False)),
-            unlimited=bool(credits_raw.get("unlimited", False)),
+            has_credits=_optional_bool(credits_raw.get("has_credits")),
+            unlimited=_optional_bool(credits_raw.get("unlimited")),
             balance=to_float(credits_raw.get("balance")),
             overage_limit_reached=(
                 credits_raw.get("overage_limit_reached")
@@ -280,11 +280,16 @@ def _parse_app_credits(snapshot: dict[str, Any]) -> CreditStatus | None:
     if not isinstance(raw, dict):
         return None
     return CreditStatus(
-        has_credits=bool(raw.get("hasCredits", raw.get("has_credits", False))),
-        unlimited=bool(raw.get("unlimited", False)),
+        has_credits=_optional_bool(raw.get("hasCredits", raw.get("has_credits"))),
+        unlimited=_optional_bool(raw.get("unlimited")),
         balance=to_float(raw.get("balance")),
-        overage_limit_reached=None,
+        overage_limit_reached=_optional_bool(raw.get("overageLimitReached", raw.get("overage_limit_reached"))),
     )
+
+
+def _optional_bool(value: Any) -> bool | None:
+    """Missing or malformed provider flags are not negative observations."""
+    return value if isinstance(value, bool) else None
 
 
 def _parse_window(raw: Any) -> tuple[float, datetime | None, int | None] | None:

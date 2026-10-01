@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from homeassistant.components.binary_sensor import BinarySensorEntity
+from homeassistant.components.binary_sensor import BinarySensorDeviceClass, BinarySensorEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
@@ -10,6 +10,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .coordinator import ChatGPTUsageCoordinator
 from .entity import ChatGPTUsageEntity
+from .observation import credits_available
 
 
 async def async_setup_entry(
@@ -28,6 +29,7 @@ async def async_setup_entry(
 
 class ChatGPTConnectedBinarySensor(ChatGPTUsageEntity, BinarySensorEntity):
     _attr_name = "Connected"
+    _attr_device_class = BinarySensorDeviceClass.CONNECTIVITY
     _attr_entity_category = EntityCategory.DIAGNOSTIC
     _attr_icon = "mdi:connection"
 
@@ -50,7 +52,7 @@ class ChatGPTConnectedBinarySensor(ChatGPTUsageEntity, BinarySensorEntity):
 
 
 class ChatGPTLimitReachedBinarySensor(ChatGPTUsageEntity, BinarySensorEntity):
-    _attr_name = "Limit reached"
+    _attr_name = "Ordinary allowance limit reached"
     _attr_icon = "mdi:speedometer-slow"
 
     def __init__(self, coordinator: ChatGPTUsageCoordinator) -> None:
@@ -59,23 +61,14 @@ class ChatGPTLimitReachedBinarySensor(ChatGPTUsageEntity, BinarySensorEntity):
         self._attr_unique_id = f"{identifier}_limit_reached"
 
     @property
-    def is_on(self) -> bool:
-        data = self.coordinator.data
-        if data is None:
-            return False
-        return bool(
-            data.blocker_reason == "usage_limit"
-            or any(
-                window.limit_reached is True or (window.used_percent or 0) >= 100
-                for window in data.windows
-            )
-        )
+    def is_on(self) -> bool | None:
+        return self.coordinator.limit_reached
 
 
 class ChatGPTUsableBinarySensor(ChatGPTUsageEntity, BinarySensorEntity):
     """Whether the reported ordinary Codex allowance is available."""
 
-    _attr_name = "Usable"
+    _attr_name = "Ordinary allowance available"
     _attr_icon = "mdi:check-circle-outline"
 
     def __init__(self, coordinator: ChatGPTUsageCoordinator) -> None:
@@ -95,7 +88,6 @@ class ChatGPTUsableBinarySensor(ChatGPTUsageEntity, BinarySensorEntity):
 
 class ChatGPTCreditsAvailableBinarySensor(ChatGPTUsageEntity, BinarySensorEntity):
     _attr_name = "Credits available"
-    _attr_entity_category = EntityCategory.DIAGNOSTIC
     _attr_icon = "mdi:credit-card-check-outline"
 
     def __init__(self, coordinator: ChatGPTUsageCoordinator) -> None:
@@ -104,6 +96,6 @@ class ChatGPTCreditsAvailableBinarySensor(ChatGPTUsageEntity, BinarySensorEntity
         self._attr_unique_id = f"{identifier}_credits_available"
 
     @property
-    def is_on(self) -> bool:
+    def is_on(self) -> bool | None:
         credits = self.coordinator.data.credits if self.coordinator.data else None
-        return bool(credits and (credits.unlimited or credits.has_credits))
+        return credits_available(credits)

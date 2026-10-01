@@ -158,3 +158,18 @@ def test_invalid_percent_window_is_ignored():
         parse_openai_usage(
             {"rate_limit": {"primary_window": _window(150, 1_800_000_000, 18000)}}
         )
+
+
+@pytest.mark.parametrize("value", [None, "false", 0, {}])
+def test_missing_or_malformed_credit_flags_remain_unknown(value):
+    remote = parse_openai_usage({
+        "rate_limit": {"primary_window": _window(5, 1_800_000_000, 18000)},
+        "credits": {"has_credits": value, "unlimited": value},
+    })
+    local = parse_app_server_rate_limits({"rateLimits": {
+        "primary": {"usedPercent": 5, "windowDurationMins": 300},
+        "credits": {"hasCredits": value, "unlimited": value},
+    }})
+    for data in (remote, local):
+        assert data.credits.has_credits is None
+        assert data.credits.unlimited is None

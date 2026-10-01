@@ -1,5 +1,28 @@
 {
   "title": "ChatGPT Usage",
+  "entity": {
+    "sensor": {
+      "account_status": {
+        "name": "Account status",
+        "state": {
+          "available": "Available",
+          "credits_available": "Credits available",
+          "limited": "Limit reached",
+          "blocked": "Account blocked"
+        }
+      }
+    },
+    "event": {
+      "reset_event": {
+        "name": "Reset events",
+        "state_attributes": {"event_type": {"state": {"reset": "Reset observed"}}}
+      },
+      "recovery_event": {
+        "name": "Recovery events",
+        "state_attributes": {"event_type": {"state": {"recovered": "Ordinary allowance usable again"}}}
+      }
+    }
+  },
   "config": {
     "step": {
       "user": {

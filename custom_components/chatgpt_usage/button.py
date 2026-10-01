@@ -20,13 +20,18 @@ async def async_setup_entry(
 
 class ChatGPTRefreshButton(ChatGPTUsageEntity, ButtonEntity):
     _attr_name = "Refresh usage"
-    _attr_entity_category = EntityCategory.CONFIG
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
     _attr_icon = "mdi:refresh"
 
     def __init__(self, coordinator: ChatGPTUsageCoordinator) -> None:
         super().__init__(coordinator)
         identifier = self._entry.unique_id or self._entry.entry_id
         self._attr_unique_id = f"{identifier}_refresh"
+
+    @property
+    def available(self) -> bool:
+        """A failed poll must not disable the action used to retry it."""
+        return True
 
     async def async_press(self) -> None:
         await self.coordinator.async_request_refresh()

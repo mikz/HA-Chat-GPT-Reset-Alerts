@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import replace
 from datetime import datetime, timedelta
 
-from .models import ChatGPTUsageData, PersistedWindowState, UsageWindow, parse_datetime
+from .models import ChatGPTUsageData, CreditStatus, PersistedWindowState, UsageWindow, parse_datetime
 
 RESET_JITTER = timedelta(seconds=5)
 IDLE_TOLERANCE = timedelta(seconds=60)
@@ -38,9 +38,19 @@ def account_status(
     """Describe ordinary Codex allowance; named feature limits stay separate."""
     if data.blocker_reason in ("credits", "spend", "unknown"):
         return "blocked"
+    limited = ordinary_limit_reached(data, previous)
+    if limited is None:
+        return "incomplete"
+    return "limited" if limited else "available"
+
+
+def ordinary_limit_reached(
+    data: ChatGPTUsageData, previous: dict[str, PersistedWindowState]
+) -> bool | None:
+    """Use the same main-window rules for status and the limit binary sensor."""
     main = [window for window in data.windows if window.is_main]
     if data.blocker_reason == "usage_limit" or any(window_limited(w) for w in main):
-        return "limited"
+        return True
     current_ids = {window.id for window in main}
     # Never call disappearance of an exhausted window a recovery.
     missing_blocker = any(
@@ -49,8 +59,31 @@ def account_status(
         for window_id, state in previous.items()
     )
     if not main or missing_blocker or any(w.used_percent is None for w in main):
-        return "incomplete"
-    return "available"
+        return None
+    return False
+
+
+def credits_available(credits: CreditStatus | None) -> bool | None:
+    """Report provider credit entitlement without inventing missing information."""
+    if credits is None:
+        return None
+    if credits.unlimited is True or credits.has_credits is True:
+        return True
+    if credits.has_credits is False:
+        return False
+    return None
+
+
+def access_status(data: ChatGPTUsageData, ordinary_status: str) -> str | None:
+    """Presentation status; credit availability never counts as quota recovery."""
+    if ordinary_status == "incomplete":
+        return None
+    if ordinary_status == "limited":
+        if data.credits and data.credits.overage_limit_reached is True:
+            return "blocked"
+        if credits_available(data.credits) is True:
+            return "credits_available"
+    return ordinary_status
 
 
 def window_limited(window: UsageWindow) -> bool:

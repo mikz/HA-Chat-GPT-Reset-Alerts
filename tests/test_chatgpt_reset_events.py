@@ -127,6 +127,7 @@ def test_reset_event_preserves_payload_and_adds_only_entry_metadata(coordinator_
         "window_id": "weekly",
         "window": "Weekly",
         "limit_name": "Codex",
+        "is_main": True,
         "previous_used_percent": 98,
         "new_used_percent": 2,
         "previous_remaining_percent": 2,

@@ -5,8 +5,8 @@ from types import SimpleNamespace
 import pytest
 
 from custom_components.chatgpt_usage.history import last_refill
-from custom_components.chatgpt_usage.models import ChatGPTUsageData, PersistedWindowState, UsageWindow
-from custom_components.chatgpt_usage.observation import account_status, stabilize_window
+from custom_components.chatgpt_usage.models import ChatGPTUsageData, CreditStatus, PersistedWindowState, UsageWindow
+from custom_components.chatgpt_usage.observation import account_status, access_status, credits_available, ordinary_limit_reached, stabilize_window
 from custom_components.chatgpt_usage.parsing import parse_openai_usage
 from custom_components.chatgpt_usage.reset import detect_reset
 
@@ -106,3 +106,36 @@ def test_moved_deadline_with_unchanged_exhausted_usage_is_not_a_reset():
 def test_observed_recovery_counts_even_before_provider_changes_deadline():
     previous = PersistedWindowState.from_window(window(100))
     assert detect_reset(previous, window(70), NOW).confidence == "usage_recovered"
+
+
+@pytest.mark.parametrize("credits,expected", [
+    (None, None), (CreditStatus(), None),
+    (CreditStatus(unlimited=False), None),
+    (CreditStatus(has_credits=False), False),
+    (CreditStatus(has_credits=True), True),
+    (CreditStatus(has_credits=False, unlimited=True), True),
+])
+def test_credit_availability_preserves_unknown(credits, expected):
+    assert credits_available(credits) is expected
+
+
+def test_limit_sensor_and_ordinary_status_share_main_window_rules():
+    data = ChatGPTUsageData(windows=(window(20), replace(window(100), id="spark", is_main=False)))
+    assert ordinary_limit_reached(data, {}) is False
+    assert account_status(data, {}) == "available"
+    data = replace(data, windows=(window(20, allowed=False),))
+    assert ordinary_limit_reached(data, {}) is True
+    assert account_status(data, {}) == "limited"
+    previous = {"weekly": PersistedWindowState.from_window(window(100))}
+    assert ordinary_limit_reached(ChatGPTUsageData(), previous) is None
+
+
+def test_credit_status_does_not_change_ordinary_allowance_or_override_blockers():
+    data = ChatGPTUsageData(windows=(window(100),), credits=CreditStatus(has_credits=True))
+    assert account_status(data, {}) == "limited"
+    assert access_status(data, "limited") == "credits_available"
+    assert access_status(data, "available") == "available"
+    assert access_status(data, "blocked") == "blocked"
+    assert access_status(data, "incomplete") is None
+    capped = replace(data, credits=replace(data.credits, overage_limit_reached=True))
+    assert access_status(capped, "limited") == "blocked"

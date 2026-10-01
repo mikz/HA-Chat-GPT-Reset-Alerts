@@ -35,8 +35,8 @@ class UsageWindow:
 class CreditStatus:
     """Read-only credit information returned by the usage endpoint."""
 
-    has_credits: bool = False
-    unlimited: bool = False
+    has_credits: bool | None = None
+    unlimited: bool | None = None
     balance: float | None = None
     overage_limit_reached: bool | None = None
 

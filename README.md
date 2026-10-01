@@ -1,14 +1,17 @@
 # AI Usage for Home Assistant
 
-## mikz fork: ChatGPT Usage 0.1.3
+## mikz fork: ChatGPT Usage 0.1.4
 
 This fork adds stable reset timestamps, persisted **last observed reset** sensors,
-an account **Usable** sensor, and recovery-only events. It also fixes credential
+an **Ordinary allowance available** sensor, and recovery-only events. It also fixes credential
 redaction for Home Assistant config entries and adds tests on HA 2026.9.4.
 Credit balances and banked resets have numeric history charts and whole-number display.
+Account status is a native enum with separate credit availability. Reset and recovery
+event entities provide history and native automation triggers. Known reset times and
+manual refresh remain available after polling failures; provider backoff still applies.
 
 For HACS, add `mikz/HA-Chat-GPT-Reset-Alerts` as a custom **Integration** repository
-and install release `v0.1.3`. Its `chatgpt_usage.zip` contains only ChatGPT Usage.
+and install release `v0.1.4`. Its `chatgpt_usage.zip` contains only ChatGPT Usage.
 Keep the existing `chatgpt_usage` config entries when switching repository sources;
 their credentials, entity IDs, and history continue to work. Restart HA after installation.
 

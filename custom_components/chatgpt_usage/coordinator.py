@@ -35,7 +35,7 @@ from .const import (
     STORAGE_VERSION,
 )
 from .models import ChatGPTUsageData, PersistedWindowState, UsageWindow, parse_datetime
-from .observation import account_status, stabilize_window
+from .observation import account_status, ordinary_limit_reached, stabilize_window
 from .reset import detect_reset
 
 _LOGGER = logging.getLogger(__name__)
@@ -199,6 +199,11 @@ class ChatGPTUsageCoordinator(DataUpdateCoordinator[ChatGPTUsageData]):
         dates = [date for state in states if (date := parse_datetime(state.last_reset_at))]
         return max(dates, default=None)
 
+    @property
+    def limit_reached(self) -> bool | None:
+        """Ordinary allowance only; incomplete readings remain unknown."""
+        return ordinary_limit_reached(self.data, self._window_state) if self.data else None
+
     async def _async_save_state(self) -> None:
         await self._store.async_save({
             "windows": {key: value.as_dict() for key, value in self._window_state.items()},
@@ -245,6 +250,7 @@ def _reset_event_data(previous: PersistedWindowState, current: UsageWindow, conf
         "window_id": current.id,
         "window": current.display_name,
         "limit_name": current.limit_name,
+        "is_main": current.is_main,
         "previous_used_percent": previous.used_percent,
         "new_used_percent": current.used_percent,
         "previous_remaining_percent": previous.remaining_percent,
