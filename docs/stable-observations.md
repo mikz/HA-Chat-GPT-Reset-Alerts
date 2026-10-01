@@ -1,6 +1,16 @@
 # Stable quota observations
 
-ChatGPT Usage 0.1.2 keeps existing account and entity identifiers.
+ChatGPT Usage 0.1.3 keeps existing account and entity identifiers.
+
+## Credit history
+
+Credit balance and reset credits are numeric measurement sensors. Home Assistant
+shows their history as line charts and records long-term minimum, maximum, and
+mean values. Both default to whole-number display; the credit balance retains
+the provider's full precision in recorded values. Missing balances remain unknown.
+
+Existing entity IDs and Recorder history are preserved. Long-term statistics
+start after upgrading to 0.1.3; the integration does not backfill old statistics.
 
 ## What the times mean
 
@@ -58,7 +68,7 @@ the shared coordinator updates all of that account's entities. See
 ## Release and rollback
 
 Run the Testmon suite and Ruff before publishing. The HA runtime job covers the
-deployed 2026.9.2 version. Build the HACS artifact with:
+deployed 2026.9.4 version. Build the HACS artifact with:
 
 ```sh
 python scripts/build_release.py
@@ -73,7 +83,7 @@ package through HACS, then install this fork before restarting. Preserve the
 three integration config entries; deleting those also deletes their entity registry
 records. Save the dashboard and automation definitions before changing them.
 
-To roll back the package, reinstall the prior upstream commit through HACS and
-restart HA. Restore the previous dashboard and automation through their config APIs.
+To roll back the package, reinstall the previously working fork release through
+HACS and restart HA. Restore any changed dashboard or automation through its config API.
 The stored reset-state schema keeps the original fields and adds optional fields,
 so the older integration can still read it.

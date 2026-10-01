@@ -1,13 +1,14 @@
 # AI Usage for Home Assistant
 
-## mikz fork: ChatGPT Usage 0.1.2
+## mikz fork: ChatGPT Usage 0.1.3
 
 This fork adds stable reset timestamps, persisted **last observed reset** sensors,
 an account **Usable** sensor, and recovery-only events. It also fixes credential
-redaction for Home Assistant config entries and adds tests on HA 2026.9.2.
+redaction for Home Assistant config entries and adds tests on HA 2026.9.4.
+Credit balances and banked resets have numeric history charts and whole-number display.
 
 For HACS, add `mikz/HA-Chat-GPT-Reset-Alerts` as a custom **Integration** repository
-and install release `v0.1.2`. Its `chatgpt_usage.zip` contains only ChatGPT Usage.
+and install release `v0.1.3`. Its `chatgpt_usage.zip` contains only ChatGPT Usage.
 Keep the existing `chatgpt_usage` config entries when switching repository sources;
 their credentials, entity IDs, and history continue to work. Restart HA after installation.
 
@@ -586,7 +587,7 @@ ruff check custom_components tests
 
 Install `pytest`, `pytest-testmon`, and `ruff` for local tests. Testmon is enabled
 in `pyproject.toml`. The runtime CI job also runs the suite with Home Assistant
-2026.9.2 and `pytest-homeassistant-custom-component==0.13.365`.
+2026.9.4 and `pytest-homeassistant-custom-component==0.13.367`.
 
 ---
 

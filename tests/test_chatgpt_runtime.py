@@ -22,6 +22,59 @@ def usage(used, reset):
 
 
 @pytest.mark.asyncio
+async def test_credit_balances_have_numeric_history_and_integer_display(hass, enable_custom_integrations):
+    """Balance history stays numeric without rounding away provider precision."""
+    from dataclasses import replace
+
+    from custom_components.chatgpt_usage.models import CreditStatus
+
+    entry = MockConfigEntry(
+        domain="chatgpt_usage", title="Credit test", unique_id="credit-test",
+        data={"provider": "remote"},
+    )
+    entry.add_to_hass(hass)
+    provider = AsyncMock()
+    baseline = usage(100, datetime.now(UTC) + timedelta(days=3))
+    provider.async_get_usage.return_value = replace(
+        baseline, credits=CreditStatus(has_credits=True, balance=62499.6734525),
+        available_reset_credits=2,
+    )
+    with patch("custom_components.chatgpt_usage.coordinator.RemoteOpenAIProvider", return_value=provider):
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+        registry = er.async_get(hass)
+        balance = registry.async_get_entity_id("sensor", "chatgpt_usage", "credit-test_credit_balance")
+        resets = registry.async_get_entity_id("sensor", "chatgpt_usage", "credit-test_reset_credits_available")
+        for entity_id, unit in ((balance, "credits"), (resets, "resets")):
+            state = hass.states.get(entity_id)
+            assert state.attributes["state_class"] == "measurement"
+            assert state.attributes["unit_of_measurement"] == unit
+            assert registry.async_get(entity_id).options["sensor"]["suggested_display_precision"] == 0
+        assert float(hass.states.get(balance).state) == 62499.6734525
+        assert hass.states.get(resets).state == "2"
+
+        # Spending to zero is a real measurement; missing data is unknown, never zero.
+        for amount, count in ((0.0, 0), (None, None)):
+            provider.async_get_usage.return_value = replace(
+                baseline, credits=CreditStatus(balance=amount) if amount is not None else None,
+                available_reset_credits=count,
+            )
+            await entry.runtime_data.async_refresh()
+            await hass.async_block_till_done()
+            if amount is None:
+                assert hass.states.get(balance).state == "unknown"
+                assert hass.states.get(resets).state == "unknown"
+            else:
+                assert float(hass.states.get(balance).state) == 0
+                assert hass.states.get(resets).state == "0"
+
+        assert await hass.config_entries.async_reload(entry.entry_id)
+        await hass.async_block_till_done()
+        assert registry.async_get_entity_id("sensor", "chatgpt_usage", "credit-test_credit_balance") == balance
+        assert registry.async_get_entity_id("sensor", "chatgpt_usage", "credit-test_reset_credits_available") == resets
+
+
+@pytest.mark.asyncio
 async def test_runtime_recovery_entities_and_reload(hass, enable_custom_integrations):
     entry = MockConfigEntry(domain="chatgpt_usage", title="Test account", unique_id="test-account",
                             data={"provider": "remote", "access_token": "test-secret"})

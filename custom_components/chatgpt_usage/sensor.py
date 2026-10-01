@@ -189,6 +189,9 @@ class ChatGPTCreditBalanceSensor(ChatGPTUsageEntity, SensorEntity):
     _attr_name = "Credit balance"
     _attr_entity_category = EntityCategory.DIAGNOSTIC
     _attr_icon = "mdi:credit-card-outline"
+    _attr_native_unit_of_measurement = "credits"
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_suggested_display_precision = 0
 
     def __init__(self, coordinator: ChatGPTUsageCoordinator) -> None:
         super().__init__(coordinator)
@@ -205,6 +208,9 @@ class ChatGPTResetCreditsSensor(ChatGPTUsageEntity, SensorEntity):
     _attr_name = "Reset credits available"
     _attr_entity_category = EntityCategory.DIAGNOSTIC
     _attr_icon = "mdi:restore"
+    _attr_native_unit_of_measurement = "resets"
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_suggested_display_precision = 0
 
     def __init__(self, coordinator: ChatGPTUsageCoordinator) -> None:
         super().__init__(coordinator)
