@@ -1,0 +1,15 @@
+# Replace the two entity IDs and dashboard path for your account.
+type: markdown
+entity_id:
+  - sensor.chatgpt_usage_reset_credits_available
+  - sensor.chatgpt_usage_next_banked_reset_expiry
+content: >-
+  {% set count_entity = 'sensor.chatgpt_usage_reset_credits_available' %}
+  {% set expiry_entity = 'sensor.chatgpt_usage_next_banked_reset_expiry' %}
+  {% set details_path = '/lovelace/ai?more-info-entity-id=' %}
+  {% set expiry = as_datetime(states(expiry_entity), none) %}
+  {% set status = state_attr(expiry_entity, 'expiry_status') %}
+  <table role="presentation" width="100%">
+  <tr><td><small>Banked resets</small></td><td align="right"><a href="{{ details_path }}{{ count_entity }}"><b>{% if is_number(states(count_entity)) %}{{ states(count_entity) | int }}{% else %}Not reported{% endif %}</b></a></td></tr>
+  <tr><td valign="top"><small>{% if status == 'partial' %}Next known banked expiry{% else %}Next banked reset expiry{% endif %}</small></td><td align="right"><a href="{{ details_path }}{{ expiry_entity }}">{% if is_state(expiry_entity, 'unavailable') %}Unavailable{% elif expiry %}<b>{% if expiry > now() %}In {{ time_until(expiry, 2) }}{% else %}Expired · awaiting update{% endif %}</b><br><small>{{ as_local(expiry).strftime('%d %b %Y, %H:%M %Z') }}</small>{% elif status == 'none_available' %}No banked resets{% else %}Not reported{% endif %}</a></td></tr>
+  </table>

@@ -7,7 +7,7 @@ import base64
 import binascii
 import json
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any, Protocol
 
 import aiohttp
@@ -40,11 +40,12 @@ from .const import (
     OAUTH_TOKEN_URL,
     PROVIDER_REMOTE,
     REQUEST_TIMEOUT_SECONDS,
+    RESET_CREDITS_API_URL,
     USAGE_API_URL,
     USER_AGENT,
 )
 from .models import ChatGPTUsageData
-from .parsing import UsageSchemaError, parse_helper_usage, parse_openai_usage
+from .parsing import UsageSchemaError, parse_helper_usage, parse_openai_usage, parse_reset_credits
 
 
 class ProviderError(Exception):
@@ -166,6 +167,7 @@ class OpenAIAuthClient:
 
     def __init__(self, session: aiohttp.ClientSession) -> None:
         self.session = session
+        self._reset_details_retry_at = 0.0
 
     async def async_request_device_code(self) -> DeviceCode:
         try:
@@ -289,11 +291,45 @@ class OpenAIAuthClient:
         if status >= 400:
             raise ProviderError(f"OpenAI usage request failed ({status})")
         try:
-            return parse_openai_usage(
+            data = parse_openai_usage(
                 payload, account_id=current.account_id, source=PROVIDER_REMOTE
-            ), current
+            )
         except UsageSchemaError as err:
             raise ProviderSchemaError(str(err)) from err
+        if data.available_reset_credits and data.reset_credit_expiries is None:
+            details = await self._async_reset_credit_details(current)
+            if details is not None:
+                _, expiries = parse_reset_credits(details)
+                data = replace(data, reset_credit_expiries=expiries)
+        return data, current
+
+    async def _async_reset_credit_details(
+        self, credentials: OpenAICredentials
+    ) -> dict[str, Any] | None:
+        """Optional read-only details must never break the primary usage reading."""
+        if time.monotonic() < self._reset_details_retry_at:
+            return None
+        try:
+            async with asyncio.timeout(REQUEST_TIMEOUT_SECONDS):
+                async with self.session.get(
+                    RESET_CREDITS_API_URL, headers=self._headers(credentials),
+                    allow_redirects=False,
+                ) as response:
+                    if response.status != 200:
+                        delay = (
+                            max(300, min(_retry_after_seconds(response) or 900, 14400))
+                            if response.status == 429 else 900
+                        )
+                        self._reset_details_retry_at = time.monotonic() + delay
+                        return None
+                    payload = await response.json(content_type=None)
+        except (aiohttp.ClientError, TimeoutError, ValueError, UnicodeDecodeError):
+            self._reset_details_retry_at = time.monotonic() + 900
+            return None
+        if not isinstance(payload, dict) or not isinstance(payload.get("credits"), list):
+            self._reset_details_retry_at = time.monotonic() + 900
+            return None
+        return payload
 
     async def async_get_accounts(self, credentials: OpenAICredentials) -> tuple[AvailableAccount, ...]:
         headers = self._headers(credentials)

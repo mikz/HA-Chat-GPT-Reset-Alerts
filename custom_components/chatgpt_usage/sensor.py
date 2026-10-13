@@ -42,6 +42,7 @@ async def async_setup_entry(
             ("plan", ChatGPTPlanSensor),
             ("credit_balance", ChatGPTCreditBalanceSensor),
             ("reset_credits", ChatGPTResetCreditsSensor),
+            ("reset_credit_expiry", ChatGPTResetCreditExpirySensor),
             ("last_reset", ChatGPTLastResetSensor),
             ("last_recovered", ChatGPTLastRecoveredSensor),
             ("account_status", ChatGPTAccountStatusSensor),
@@ -232,6 +233,34 @@ class ChatGPTResetCreditsSensor(ChatGPTUsageEntity, SensorEntity):
     @property
     def native_value(self) -> int | None:
         return self.coordinator.data.available_reset_credits if self.coordinator.data else None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        data = self.coordinator.data
+        return data.reset_credit_expiry_attributes() if data else {}
+
+
+class ChatGPTResetCreditExpirySensor(ChatGPTUsageEntity, SensorEntity):
+    """Earliest reported expiry, separate from the ordinary allowance reset."""
+
+    _attr_name = "Next banked reset expiry"
+    _attr_device_class = SensorDeviceClass.TIMESTAMP
+    _attr_icon = "mdi:calendar-clock"
+
+    def __init__(self, coordinator: ChatGPTUsageCoordinator) -> None:
+        super().__init__(coordinator)
+        identifier = self._entry.unique_id or self._entry.entry_id
+        self._attr_unique_id = f"{identifier}_next_banked_reset_expiry"
+
+    @property
+    def native_value(self) -> datetime | None:
+        data = self.coordinator.data
+        return data.next_reset_credit_expiry if data else None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        data = self.coordinator.data
+        return data.reset_credit_expiry_attributes() if data else {}
 
 
 class ChatGPTAccountStatusSensor(ChatGPTUsageEntity, SensorEntity):

@@ -72,12 +72,7 @@ def parse_openai_usage(
             ),
         )
 
-    reset_count = None
-    reset_raw = raw.get("rate_limit_reset_credits")
-    if isinstance(reset_raw, dict):
-        value = reset_raw.get("available_count")
-        if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
-            reset_count = value
+    reset_count, reset_expiries = parse_reset_credits(raw.get("rate_limit_reset_credits"))
 
     blocker_reason = _parse_blocker(raw)
     plan = _safe_text(raw.get("plan_type"), 80)
@@ -89,6 +84,7 @@ def parse_openai_usage(
         source=source,
         credits=credits,
         available_reset_credits=reset_count,
+        reset_credit_expiries=reset_expiries,
         blocker_reason=blocker_reason,
         last_updated=datetime.now(UTC),
     )
@@ -124,12 +120,9 @@ def parse_app_server_rate_limits(
         raise UsageSchemaError("Codex app-server returned no usable rate-limit windows")
 
     credits = _parse_app_credits(main) if isinstance(main, dict) else None
-    reset_count = None
-    reset_raw = raw.get("rateLimitResetCredits") or raw.get("rate_limit_reset_credits")
-    if isinstance(reset_raw, dict):
-        value = reset_raw.get("availableCount", reset_raw.get("available_count"))
-        if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
-            reset_count = value
+    reset_count, reset_expiries = parse_reset_credits(
+        raw.get("rateLimitResetCredits") or raw.get("rate_limit_reset_credits")
+    )
 
     app_plan = _safe_text(plan, 80)
     if app_plan is None and isinstance(main, dict):
@@ -146,6 +139,7 @@ def parse_app_server_rate_limits(
         source="local",
         credits=credits,
         available_reset_credits=reset_count,
+        reset_credit_expiries=reset_expiries,
         blocker_reason=blocker,
         last_updated=datetime.now(UTC),
     )
@@ -183,9 +177,34 @@ def parse_helper_usage(raw: Any) -> ChatGPTUsageData:
         source="local",
         credits=data.credits,
         available_reset_credits=data.available_reset_credits,
+        reset_credit_expiries=data.reset_credit_expiries,
         blocker_reason=data.blocker_reason,
         last_updated=datetime.now(UTC),
     )
+
+
+def parse_reset_credits(raw: Any) -> tuple[int | None, tuple[datetime | None, ...] | None]:
+    """Read counts and available expiry dates without retaining IDs or profile data."""
+    if not isinstance(raw, dict):
+        return None, None
+    count = raw.get("availableCount", raw.get("available_count"))
+    if not isinstance(count, int) or isinstance(count, bool) or count < 0:
+        count = None
+    rows = raw.get("credits")
+    if not isinstance(rows, list):
+        return count, None
+    expiries = []
+    seen: set[str] = set()
+    for row in rows[:100]:
+        if not isinstance(row, dict) or row.get("status") != "available":
+            continue
+        identifier = row.get("id")
+        if isinstance(identifier, str):
+            if identifier in seen:
+                continue
+            seen.add(identifier)
+        expiries.append(parse_datetime(row.get("expiresAt", row.get("expires_at"))))
+    return count, tuple(expiries)
 
 
 def _parse_limit_windows(

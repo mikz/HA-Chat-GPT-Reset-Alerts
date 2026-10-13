@@ -4,7 +4,7 @@ from typing import Final
 
 DOMAIN: Final = "chatgpt_usage"
 NAME: Final = "ChatGPT Usage"
-VERSION: Final = "0.1.4"
+VERSION: Final = "0.1.5"
 
 PROVIDER_REMOTE: Final = "remote"
 PROVIDER_LOCAL: Final = "local"
@@ -18,6 +18,7 @@ DEVICE_VERIFICATION_URL: Final = f"{OAUTH_ISSUER}/codex/device"
 OAUTH_TOKEN_URL: Final = f"{OAUTH_ISSUER}/oauth/token"
 OAUTH_DEVICE_REDIRECT_URI: Final = f"{OAUTH_ISSUER}/deviceauth/callback"
 USAGE_API_URL: Final = "https://chatgpt.com/backend-api/wham/usage"
+RESET_CREDITS_API_URL: Final = "https://chatgpt.com/backend-api/wham/rate-limit-reset-credits"
 ACCOUNTS_API_URL: Final = "https://chatgpt.com/backend-api/wham/accounts/check"
 
 CONF_ACCESS_TOKEN: Final = "access_token"

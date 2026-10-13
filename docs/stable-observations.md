@@ -1,6 +1,6 @@
 # Stable quota observations
 
-ChatGPT Usage 0.1.4 keeps existing account and entity identifiers.
+ChatGPT Usage 0.1.5 keeps existing account and entity identifiers.
 
 ## Credit history
 
@@ -13,6 +13,47 @@ Existing entity IDs and Recorder history are preserved. Long-term statistics
 start after upgrading to 0.1.3; the integration does not backfill old statistics.
 Credits, banked resets, and credit availability are primary account information,
 not diagnostics. Missing or malformed credit flags produce unknown availability.
+
+## Banked reset expiry
+
+**Next banked reset expiry** is a timestamp sensor for the earliest known expiry
+of an available banked reset. This is the deadline to use a banked reset, separate
+from the regular weekly allowance reset. The existing **Reset credits available**
+sensor keeps its numeric count and gains these attributes:
+
+- `next_expiry`: the same expiry as an ISO timestamp, or null when unknown.
+- `expiry_dates`: known upcoming expiry dates in order; equal dates can represent
+  separate resets that expire together.
+- `expiry_details_complete`: whether every reset counted has a known upcoming expiry.
+- `expiry_status`: `scheduled`, `partial`, `not_reported`, or `none_available`.
+
+The provider's count stays authoritative. Detail rows can be missing or capped;
+when some dates are missing, the earliest known date has status `partial`.
+A null or malformed date never becomes an invented deadline or a claim that the
+reset cannot expire. Used, redeeming, and expired resets are excluded.
+
+Remote OpenAI fetches details with a read-only GET to
+`/backend-api/wham/rate-limit-reset-credits` when usage reports a positive count
+without detail rows. Detail failures leave expiry unknown while usage monitoring
+continues. Failed detail requests back off for 15 minutes; HTTP 429 honors the
+reported retry interval within 5 minutes to 4 hours. No reset is consumed.
+Local Codex reads the same information from `rateLimitResetCredits.credits`.
+Only expiry dates are retained; credit IDs and profile information are discarded.
+
+Dates represent the last successful observation. If a deadline passes before the
+next poll, the dashboard shows **Expired · awaiting update**. A fresh reading drops
+elapsed dates and advances to the next known expiry. Polling failure makes both
+live entities unavailable. Historical expiry states remain in Recorder.
+
+See [the banked-reset dashboard card](../dashboards/banked_reset_expiry.yaml) for
+absolute and relative time with links to entity details and history. Replace its
+two example entity IDs and dashboard path with those on your installation.
+The count link opens its attributes, including `next_expiry`; the expiry link opens
+the timestamp entity's history. Add the expiry row beside the existing banked
+reset count when using a larger account card.
+
+Sources: [Codex app-server rate-limit contract](https://learn.chatgpt.com/docs/app-server#6-rate-limits-chatgpt)
+and [OpenAI's remote reset-credit reader](https://github.com/openai/codex/blob/main/codex-rs/backend-client/src/client/rate_limit_resets.rs).
 
 ## Native account status
 

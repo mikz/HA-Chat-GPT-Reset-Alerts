@@ -45,5 +45,6 @@ async def async_get_config_entry_diagnostics(
             else None
         ),
         "available_reset_credits": data.available_reset_credits if data else None,
+        "reset_credit_expiry": data.reset_credit_expiry_attributes() if data else None,
         "blocker_reason": data.blocker_reason if data else None,
     }

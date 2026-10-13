@@ -51,11 +51,48 @@ class ChatGPTUsageData:
     source: str = "unknown"
     credits: CreditStatus | None = None
     available_reset_credits: int | None = None
+    # Only available reset rows; None means details were not reported. A null
+    # date inside the tuple means that row did not report a usable expiry.
+    reset_credit_expiries: tuple[datetime | None, ...] | None = None
     blocker_reason: str | None = None
     last_updated: datetime = field(default_factory=lambda: datetime.now(UTC))
 
     def window(self, window_id: str) -> UsageWindow | None:
         return next((window for window in self.windows if window.id == window_id), None)
+
+    @property
+    def upcoming_reset_credit_expiries(self) -> tuple[datetime, ...]:
+        """Known available expiries as of the last successful provider reading."""
+        if self.available_reset_credits == 0:
+            return ()
+        return tuple(sorted(
+            expiry for expiry in self.reset_credit_expiries or ()
+            if expiry is not None and expiry > self.last_updated
+        ))
+
+    @property
+    def next_reset_credit_expiry(self) -> datetime | None:
+        return next(iter(self.upcoming_reset_credit_expiries), None)
+
+    def reset_credit_expiry_attributes(self) -> dict[str, Any]:
+        """One expiry representation shared by the count and timestamp entities."""
+        dates = self.upcoming_reset_credit_expiries
+        complete = self.available_reset_credits == 0 or (
+            self.reset_credit_expiries is not None
+            and len(self.reset_credit_expiries) == len(dates) == self.available_reset_credits
+        )
+        status = (
+            "none_available" if self.available_reset_credits == 0
+            else "not_reported" if not dates
+            else "scheduled" if complete
+            else "partial"
+        )
+        return {
+            "next_expiry": dates[0].isoformat() if dates else None,
+            "expiry_dates": [date.isoformat() for date in dates],
+            "expiry_details_complete": complete,
+            "expiry_status": status,
+        }
 
 
 @dataclass(slots=True)
