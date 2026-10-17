@@ -3,11 +3,11 @@
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, patch
 
-import aiohttp
 import pytest
 
 pytest.importorskip("pytest_homeassistant_custom_component")
 
+import aiohttp  # noqa: E402
 from homeassistant.helpers import aiohttp_client, entity_registry as er  # noqa: E402
 from pytest_homeassistant_custom_component.common import MockConfigEntry  # noqa: E402
 
