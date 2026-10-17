@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from homeassistant.components.binary_sensor import BinarySensorEntity
+from homeassistant.components.binary_sensor import BinarySensorDeviceClass, BinarySensorEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
@@ -23,6 +23,7 @@ async def async_setup_entry(
             ClaudeConnectedBinarySensor(coordinator),
             ClaudeLimitReachedBinarySensor(coordinator),
             ClaudeExtraUsageEnabledBinarySensor(coordinator),
+            ClaudeUsableBinarySensor(coordinator),
         ]
     )
 
@@ -31,6 +32,7 @@ class ClaudeConnectedBinarySensor(ClaudeUsageEntity, BinarySensorEntity):
     _attr_name = "Connected"
     _attr_icon = "mdi:cloud-check"
     _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_device_class = BinarySensorDeviceClass.CONNECTIVITY
 
     def __init__(self, coordinator: ClaudeUsageCoordinator) -> None:
         super().__init__(coordinator)
@@ -44,9 +46,13 @@ class ClaudeConnectedBinarySensor(ClaudeUsageEntity, BinarySensorEntity):
     def is_on(self) -> bool:
         return self.coordinator.last_update_success
 
+    @property
+    def extra_state_attributes(self) -> dict:
+        return {"last_error_category": self.coordinator.last_error_category}
+
 
 class ClaudeLimitReachedBinarySensor(ClaudeUsageEntity, BinarySensorEntity):
-    _attr_name = "Limit reached"
+    _attr_name = "Ordinary allowance limit reached"
     _attr_icon = "mdi:speedometer-slow"
 
     def __init__(self, coordinator: ClaudeUsageCoordinator) -> None:
@@ -54,13 +60,22 @@ class ClaudeLimitReachedBinarySensor(ClaudeUsageEntity, BinarySensorEntity):
         self._attr_unique_id = f"{coordinator.entry.entry_id}_limit_reached"
 
     @property
-    def is_on(self) -> bool:
-        if self.coordinator.data is None:
-            return False
-        return any(
-            window.used_percent is not None and window.used_percent >= 100
-            for window in self.coordinator.data.windows.values()
-        )
+    def is_on(self) -> bool | None:
+        usable = self.coordinator.reset_tracker.usable
+        return None if usable is None else not usable
+
+
+class ClaudeUsableBinarySensor(ClaudeLimitReachedBinarySensor):
+    _attr_name = "Ordinary allowance available"
+    _attr_icon = "mdi:check-circle-outline"
+
+    def __init__(self, coordinator: ClaudeUsageCoordinator) -> None:
+        super().__init__(coordinator)
+        self._attr_unique_id = f"{coordinator.entry.entry_id}_usable"
+
+    @property
+    def is_on(self) -> bool | None:
+        return self.coordinator.reset_tracker.usable
 
 
 class ClaudeExtraUsageEnabledBinarySensor(ClaudeUsageEntity, BinarySensorEntity):
@@ -80,6 +95,6 @@ class ClaudeExtraUsageEnabledBinarySensor(ClaudeUsageEntity, BinarySensorEntity)
         )
 
     @property
-    def is_on(self) -> bool:
+    def is_on(self) -> bool | None:
         extra = self.coordinator.data.extra_usage if self.coordinator.data else None
-        return bool(extra and extra.enabled)
+        return extra.enabled if extra else None

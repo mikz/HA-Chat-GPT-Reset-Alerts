@@ -49,7 +49,9 @@
     },
     "abort": {
       "already_configured": "This Claude usage source is already configured.",
-      "reauth_successful": "Authentication updated successfully."
+      "reauth_successful": "Authentication updated successfully.",
+      "wrong_account": "Reconnect the same Claude account as this integration.",
+      "cannot_identify_account": "Anthropic did not return an account identity. Please try again."
     }
   },
   "options": {
@@ -68,6 +70,40 @@
     "error": {
       "cannot_connect": "Unable to connect to the local helper.",
       "invalid_auth": "The local helper rejected the API key."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "account_status": {
+        "name": "Account status",
+        "state": {
+          "available": "Available",
+          "extra_usage_available": "Extra Usage available",
+          "limited": "Limit reached"
+        }
+      }
+    },
+    "event": {
+      "reset_event": {
+        "name": "Reset events",
+        "state_attributes": {
+          "event_type": {
+            "state": {
+              "reset": "Allowance reset"
+            }
+          }
+        }
+      },
+      "recovery_event": {
+        "name": "Recovery events",
+        "state_attributes": {
+          "event_type": {
+            "state": {
+              "recovered": "Usable again"
+            }
+          }
+        }
+      }
     }
   }
 }

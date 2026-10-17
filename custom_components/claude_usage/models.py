@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+import math
 import re
 from typing import Any
 
@@ -15,7 +16,7 @@ def _slug(value: str) -> str:
 
 def parse_datetime(value: Any) -> datetime | None:
     """Parse an ISO-8601 timestamp or epoch seconds into an aware datetime."""
-    if value is None or value == "":
+    if value is None or value == "" or isinstance(value, bool):
         return None
     if isinstance(value, (int, float)):
         try:
@@ -42,7 +43,8 @@ def _number(value: Any) -> float | None:
     if isinstance(value, bool) or value is None:
         return None
     try:
-        return round(float(value), 3)
+        number = float(value)
+        return number if math.isfinite(number) and number >= 0 else None
     except (TypeError, ValueError):
         return None
 
@@ -61,6 +63,11 @@ class UsageWindow:
     surface: str | None = None
     severity: str | None = None
     is_active: bool | None = None
+    reset_status: str = "unknown"
+
+    @property
+    def is_main(self) -> bool:
+        return self.id in ("session", "weekly")
 
     @property
     def remaining_percent(self) -> float | None:
@@ -73,7 +80,7 @@ class UsageWindow:
 class ExtraUsage:
     """Claude Extra Usage / spend information."""
 
-    enabled: bool
+    enabled: bool | None
     used: float | None = None
     limit: float | None = None
     percent: float | None = None
@@ -189,10 +196,16 @@ def _limit_window(entry: dict[str, Any]) -> UsageWindow | None:
 
 
 def _parse_extra_usage(raw: dict[str, Any]) -> ExtraUsage | None:
+    def flag(value: Any) -> bool | None:
+        return value if isinstance(value, bool) else None
+
+    def scale(value: Any) -> int:
+        return value if isinstance(value, int) and not isinstance(value, bool) and 0 <= value <= 6 else 2
+
     extra = raw.get("extra_usage")
     if isinstance(extra, dict):
-        enabled = bool(extra.get("is_enabled"))
-        divisor = 10 ** int(extra.get("decimal_places", 2) or 2)
+        enabled = flag(extra.get("is_enabled"))
+        divisor = 10 ** scale(extra.get("decimal_places"))
         used_minor = _number(extra.get("used_credits"))
         limit_minor = _number(extra.get("monthly_limit"))
         return ExtraUsage(
@@ -205,7 +218,7 @@ def _parse_extra_usage(raw: dict[str, Any]) -> ExtraUsage | None:
 
     spend = raw.get("spend")
     if isinstance(spend, dict):
-        enabled = bool(spend.get("enabled"))
+        enabled = flag(spend.get("enabled"))
         used_obj = spend.get("used") if isinstance(spend.get("used"), dict) else {}
         limit_obj = spend.get("limit") if isinstance(spend.get("limit"), dict) else {}
 
@@ -213,7 +226,7 @@ def _parse_extra_usage(raw: dict[str, Any]) -> ExtraUsage | None:
             amount = _number(obj.get("amount_minor"))
             if amount is None:
                 return None
-            exponent = int(obj.get("exponent", 2) or 2)
+            exponent = scale(obj.get("exponent"))
             return amount / (10**exponent)
 
         currency = used_obj.get("currency") or limit_obj.get("currency")
@@ -263,6 +276,17 @@ def parse_anthropic_usage(
     ]
     for window in legacy:
         if window is not None:
+            windows[window.id] = window
+
+    # Providers add model-specific weekly buckets independently of the main quota.
+    for key, payload in raw.items():
+        if not key.startswith("seven_day_") or key == "seven_day_sonnet":
+            continue
+        model = key.removeprefix("seven_day_")
+        window = _legacy_window(payload, window_id=f"weekly_{_slug(model)}",
+                                display_name=f"Weekly {model.replace('_', ' ').title()}",
+                                duration_seconds=604800, kind="weekly_scoped", model=model)
+        if window:
             windows[window.id] = window
 
     limits = raw.get("limits")

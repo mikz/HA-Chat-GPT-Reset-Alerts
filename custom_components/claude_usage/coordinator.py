@@ -37,7 +37,7 @@ class ClaudeUsageCoordinator(DataUpdateCoordinator[ClaudeUsageData]):
         self.entry = entry
         self.provider = provider
         self.reset_tracker = ResetTracker(hass, entry.entry_id)
-        self.last_reset_events: list[dict] = []
+        self.last_error_category: str | None = None
         self._rate_limit_failures = 0
         self._backoff_until: datetime | None = None
         interval = int(entry.options.get(CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL))
@@ -58,17 +58,20 @@ class ClaudeUsageCoordinator(DataUpdateCoordinator[ClaudeUsageData]):
         try:
             data = await self.provider.async_get_usage()
         except ClaudeAuthError as err:
+            self.last_error_category = "authentication"
             raise ConfigEntryAuthFailed(str(err)) from err
         except ClaudeRateLimitError as err:
+            self.last_error_category = "rate_limited"
             self._rate_limit_failures += 1
-            delay = err.retry_after or min(86400, 3600 * (2 ** (self._rate_limit_failures - 1)))
+            delay = min(86400, err.retry_after or 900 * (2 ** min(self._rate_limit_failures - 1, 7)))
             self._backoff_until = now + timedelta(seconds=max(60, delay))
             detail = f"; backoff={delay}s"
             raise UpdateFailed(f"Anthropic usage endpoint rate limited{detail}") from err
         except (ClaudeConnectionError, ClaudePayloadError, ClaudeUsageError) as err:
+            self.last_error_category = "provider"
             raise UpdateFailed(str(err)) from err
 
         self._rate_limit_failures = 0
         self._backoff_until = None
-        self.last_reset_events = await self.reset_tracker.async_process(data)
-        return data
+        self.last_error_category = None
+        return await self.reset_tracker.async_process(data)

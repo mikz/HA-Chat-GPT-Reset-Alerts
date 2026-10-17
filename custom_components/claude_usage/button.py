@@ -32,5 +32,9 @@ class ClaudeRefreshButton(ClaudeUsageEntity, ButtonEntity):
         super().__init__(coordinator)
         self._attr_unique_id = f"{coordinator.entry.entry_id}_refresh"
 
+    @property
+    def available(self) -> bool:
+        return True
+
     async def async_press(self) -> None:
         await self.coordinator.async_request_refresh()

@@ -43,6 +43,5 @@ jobs:
       - run: pip install homeassistant==2026.9.4 pytest-homeassistant-custom-component==0.13.367 pytest-testmon
       - run: python -m pytest --testmon-env=ha2026.9.4 -q -o asyncio_mode=auto
 
-# HACS validation is intentionally omitted because this private repository
-# contains two separate custom integrations. HACS distribution should split
-# them into separate repositories or combine them into one integration first.
+# The source repository tests both components. Release archives and the Claude
+# export each contain one integration for HACS installation.

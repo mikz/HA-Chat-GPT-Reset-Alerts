@@ -7,18 +7,8 @@ from typing import Any
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 
-from .const import (
-    CONF_ACCESS_TOKEN,
-    CONF_API_KEY,
-    CONF_REFRESH_TOKEN,
-)
 from .coordinator import ClaudeUsageCoordinator
-
-_REDACT = {CONF_ACCESS_TOKEN, CONF_REFRESH_TOKEN, CONF_API_KEY}
-
-
-def _redact(data: dict[str, Any]) -> dict[str, Any]:
-    return {key: "REDACTED" if key in _REDACT and value else value for key, value in data.items()}
+from .security import redact_mapping
 
 
 async def async_get_config_entry_diagnostics(
@@ -28,8 +18,8 @@ async def async_get_config_entry_diagnostics(
     usage = coordinator.data
     return {
         "entry": {
-            "data": _redact(dict(entry.data)),
-            "options": _redact(dict(entry.options)),
+            "data": redact_mapping(entry.data),
+            "options": redact_mapping(entry.options),
             "version": entry.version,
         },
         "coordinator": {

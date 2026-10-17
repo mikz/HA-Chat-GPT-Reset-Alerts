@@ -1,21 +1,24 @@
-"""Build the ChatGPT-only HACS release archive."""
+"""Build one provider's HACS release archive."""
 
 from pathlib import Path
+import argparse
 from zipfile import ZIP_DEFLATED, ZipFile
 
 ROOT = Path(__file__).resolve().parents[1]
-SOURCE = ROOT / "custom_components" / "chatgpt_usage"
-TARGET = ROOT / "dist" / "chatgpt_usage.zip"
 
 
-def build() -> Path:
-    TARGET.parent.mkdir(exist_ok=True)
-    with ZipFile(TARGET, "w", compression=ZIP_DEFLATED) as archive:
-        for path in sorted(SOURCE.rglob("*")):
+def build(domain: str = "chatgpt_usage") -> Path:
+    source = ROOT / "custom_components" / domain
+    target = ROOT / "dist" / f"{domain}.zip"
+    target.parent.mkdir(exist_ok=True)
+    with ZipFile(target, "w", compression=ZIP_DEFLATED) as archive:
+        for path in sorted(source.rglob("*")):
             if path.is_file() and path.suffix in (".py", ".json", ".yaml", ".png", ".svg"):
-                archive.write(path, path.relative_to(SOURCE))
-    return TARGET
+                archive.write(path, path.relative_to(source))
+    return target
 
 
 if __name__ == "__main__":
-    print(build())
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--domain", choices=("chatgpt_usage", "claude_usage"), default="chatgpt_usage")
+    print(build(parser.parse_args().domain))

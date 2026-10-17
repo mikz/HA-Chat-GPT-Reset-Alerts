@@ -20,7 +20,7 @@ class ClaudeUsageEntity(CoordinatorEntity[ClaudeUsageCoordinator]):
         provider = entry.data.get("provider", "remote")
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, entry.entry_id)},
-            name="Claude Usage",
+            name=f"Claude ({entry.data.get('account_name') or entry.title})",
             manufacturer="Anthropic",
             model=f"Claude Subscription Usage Monitor ({provider})",
             sw_version=VERSION,

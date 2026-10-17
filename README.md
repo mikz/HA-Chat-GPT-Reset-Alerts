@@ -18,7 +18,10 @@ Keep the existing `chatgpt_usage` config entries when switching repository sourc
 their credentials, entity IDs, and history continue to work. Restart HA after installation.
 
 Read [observed resets, recovery notifications, and deployment](docs/stable-observations.md).
-The Claude integration and helpers below remain available for manual installation.
+Claude Usage 0.2.0 is available separately through the HACS repository
+`mikz/HA-Claude-Usage`. It includes stable reset observations, native recovery
+events, numeric spending history, and configurable polling. See
+[Claude setup and updates](docs/claude-usage.md).
 
 Home Assistant integrations for monitoring subscription usage and reset times for:
 
@@ -28,7 +31,8 @@ Home Assistant integrations for monitoring subscription usage and reset times fo
 The primary goal is to let Home Assistant notify you when an AI usage allowance resets.
 
 ChatGPT Usage defaults to **one poll every five minutes**; existing entries keep their
-configured interval until changed in Options. Claude Usage defaults to one poll per hour.
+configured interval until changed in Options. New Claude Usage entries also default
+to five minutes, configurable from 300 to 14,400 seconds.
 Both persist reset state so restarting Home Assistant does not create a false reset alert.
 
 > **Unofficial community project.** This repository is not affiliated with, endorsed by, or supported by OpenAI or Anthropic.
@@ -48,7 +52,10 @@ You can install either or both.
 
 # Installation
 
-This repository is currently public, but it contains **two separate Home Assistant integrations**. The reliable installation method for this combined repository is manual copy.
+This source repository contains **two separate Home Assistant integrations**.
+For HACS, use `mikz/HA-Chat-GPT-Reset-Alerts` for ChatGPT Usage and
+`mikz/HA-Claude-Usage` for Claude Usage. Each release installs one component.
+The manual installation steps below remain available.
 
 Clone or download:
 
@@ -101,7 +108,7 @@ After restart:
 
 Search for **ChatGPT Usage** and/or **Claude Usage**.
 
-> `hacs.json` is included for development, but HACS distribution is cleaner as one integration per repository. This combined two-integration repository should be installed manually unless it is later split into dedicated HACS repositories or combined into one `ai_usage` domain.
+> The HACS packages are separate so installing or updating one provider does not replace the other.
 
 ---
 

@@ -14,6 +14,7 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from .coordinator import ClaudeUsageCoordinator
 from .entity import ClaudeUsageEntity
 from .models import UsageWindow
+from .observation import access_status
 
 
 async def async_setup_entry(
@@ -28,6 +29,9 @@ async def async_setup_entry(
     static_entities: list[SensorEntity] = [
         ClaudePlanSensor(coordinator),
         ClaudeLastUpdateSensor(coordinator),
+        ClaudeLastResetSensor(coordinator),
+        ClaudeLastRecoveredSensor(coordinator),
+        ClaudeAccountStatusSensor(coordinator),
         ClaudeExtraUsageSensor(coordinator, "percent"),
         ClaudeExtraUsageSensor(coordinator, "used"),
         ClaudeExtraUsageSensor(coordinator, "remaining"),
@@ -47,7 +51,7 @@ async def async_setup_entry(
             seen.add(window_id)
             entities.extend(
                 ClaudeWindowSensor(coordinator, window_id, metric)
-                for metric in ("usage", "remaining", "reset", "time_remaining")
+                for metric in ("usage", "remaining", "reset", "time_remaining", "last_reset")
             )
         async_add_entities(entities)
 
@@ -105,6 +109,7 @@ class ClaudeWindowSensor(ClaudeUsageEntity, SensorEntity):
             "remaining": f"{label} remaining",
             "reset": f"{label} reset",
             "time_remaining": f"{label} time remaining",
+            "last_reset": f"{label} last reset",
         }
         self._attr_name = names[metric]
         self._attr_unique_id = f"{coordinator.entry.entry_id}_{window_id}_{metric}"
@@ -112,13 +117,15 @@ class ClaudeWindowSensor(ClaudeUsageEntity, SensorEntity):
             self._attr_native_unit_of_measurement = PERCENTAGE
             self._attr_state_class = SensorStateClass.MEASUREMENT
             self._attr_icon = "mdi:chart-donut"
-        elif metric == "reset":
+            self._attr_suggested_display_precision = 0
+        elif metric in ("reset", "last_reset"):
             self._attr_device_class = SensorDeviceClass.TIMESTAMP
             self._attr_icon = "mdi:clock-refresh-outline"
         else:
             self._attr_device_class = SensorDeviceClass.DURATION
             self._attr_native_unit_of_measurement = UnitOfTime.SECONDS
             self._attr_icon = "mdi:timer-outline"
+            self._attr_entity_registry_enabled_default = False
 
     @property
     def _window(self) -> UsageWindow | None:
@@ -128,10 +135,16 @@ class ClaudeWindowSensor(ClaudeUsageEntity, SensorEntity):
 
     @property
     def available(self) -> bool:
+        if self.metric == "last_reset":
+            return True
+        if self.metric == "reset":
+            return self._window is not None
         return self.coordinator.last_update_success and self._window is not None
 
     @property
     def native_value(self) -> Any:
+        if self.metric == "last_reset":
+            return self.coordinator.reset_tracker.last_reset_at(self.window_id)
         window = self._window
         if window is None:
             return None
@@ -158,6 +171,9 @@ class ClaudeWindowSensor(ClaudeUsageEntity, SensorEntity):
             "severity": window.severity,
             "is_active": window.is_active,
             "duration_seconds": window.duration_seconds,
+            "reset_status": window.reset_status,
+            "is_main": window.is_main,
+            "last_update_success": self.coordinator.last_update_success,
         }.items() if value is not None}
 
 
@@ -175,10 +191,31 @@ class ClaudeExtraUsageSensor(ClaudeUsageEntity, SensorEntity):
         }
         self._attr_name = names[metric]
         self._attr_unique_id = f"{coordinator.entry.entry_id}_extra_{metric}"
+        self._attr_state_class = SensorStateClass.MEASUREMENT
+        self._attr_suggested_display_precision = 0 if metric == "percent" else 2
         if metric == "percent":
             self._attr_native_unit_of_measurement = PERCENTAGE
             self._attr_state_class = SensorStateClass.MEASUREMENT
         self._attr_icon = "mdi:credit-card-outline"
+
+    @property
+    def native_unit_of_measurement(self) -> str | None:
+        if self.metric == "percent":
+            return PERCENTAGE
+        extra = self.coordinator.data.extra_usage if self.coordinator.data else None
+        return extra.currency.upper() if extra and extra.currency else None
+
+    @property
+    def device_class(self) -> SensorDeviceClass | None:
+        if self.metric != "percent" and self.native_unit_of_measurement:
+            return SensorDeviceClass.MONETARY
+        return None
+
+    @property
+    def state_class(self) -> SensorStateClass | None:
+        # Balances and monthly limits are not cumulative totals. Recorder still
+        # charts their numeric history without inventing long-term sums.
+        return SensorStateClass.MEASUREMENT if self.device_class is None else None
 
     @property
     def available(self) -> bool:
@@ -201,3 +238,49 @@ class ClaudeExtraUsageSensor(ClaudeUsageEntity, SensorEntity):
     def extra_state_attributes(self) -> dict[str, Any]:
         extra = self.coordinator.data.extra_usage if self.coordinator.data else None
         return {"currency": extra.currency} if extra and extra.currency else {}
+
+
+class ClaudeLastResetSensor(ClaudeUsageEntity, SensorEntity):
+    _attr_name = "Last reset"
+    _attr_device_class = SensorDeviceClass.TIMESTAMP
+    _attr_icon = "mdi:clock-check-outline"
+
+    def __init__(self, coordinator: ClaudeUsageCoordinator) -> None:
+        super().__init__(coordinator)
+        self._attr_unique_id = f"{coordinator.entry.entry_id}_last_reset"
+
+    @property
+    def available(self) -> bool:
+        return True
+
+    @property
+    def native_value(self) -> datetime | None:
+        return self.coordinator.reset_tracker.last_reset_at()
+
+
+class ClaudeLastRecoveredSensor(ClaudeLastResetSensor):
+    _attr_name = "Last usable again"
+
+    def __init__(self, coordinator: ClaudeUsageCoordinator) -> None:
+        super().__init__(coordinator)
+        self._attr_unique_id = f"{coordinator.entry.entry_id}_last_recovered"
+
+    @property
+    def native_value(self) -> datetime | None:
+        return self.coordinator.reset_tracker.last_recovered_at
+
+
+class ClaudeAccountStatusSensor(ClaudeUsageEntity, SensorEntity):
+    _attr_translation_key = "account_status"
+    _attr_device_class = SensorDeviceClass.ENUM
+    _attr_options = ["available", "extra_usage_available", "limited"]
+    _attr_icon = "mdi:account-check-outline"
+
+    def __init__(self, coordinator: ClaudeUsageCoordinator) -> None:
+        super().__init__(coordinator)
+        self._attr_unique_id = f"{coordinator.entry.entry_id}_account_status"
+
+    @property
+    def native_value(self) -> str | None:
+        data = self.coordinator.data
+        return access_status(data, self.coordinator.reset_tracker.usable) if data else None

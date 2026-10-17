@@ -6,9 +6,9 @@ from homeassistant.const import Platform
 
 DOMAIN = "claude_usage"
 NAME = "Claude Usage"
-VERSION = "0.1.0"
+VERSION = "0.2.0"
 
-PLATFORMS: list[Platform] = [Platform.SENSOR, Platform.BINARY_SENSOR, Platform.BUTTON]
+PLATFORMS: list[Platform] = [Platform.SENSOR, Platform.BINARY_SENSOR, Platform.BUTTON, Platform.EVENT]
 
 PROVIDER_REMOTE = "remote"
 PROVIDER_LOCAL = "local"
@@ -26,8 +26,9 @@ CONF_PORT = "port"
 CONF_API_KEY = "api_key"
 CONF_USE_HTTPS = "use_https"
 
-DEFAULT_UPDATE_INTERVAL = 3600
-UPDATE_INTERVAL_OPTIONS = [900, 1800, 3600, 7200, 14400]
+DEFAULT_UPDATE_INTERVAL = 300
+MIN_UPDATE_INTERVAL = 300
+MAX_UPDATE_INTERVAL = 14400
 DEFAULT_LOCAL_PORT = 8766
 
 OAUTH_CLIENT_ID = "9d1c250a-e61b-44d9-88ed-5944d1962f5e"
@@ -45,4 +46,5 @@ LOCAL_USAGE_PATH = "/api/v1/usage"
 LOCAL_HEALTH_PATH = "/api/v1/health"
 
 EVENT_USAGE_RESET = "claude_usage_reset"
+EVENT_ACCOUNT_RECOVERED = "claude_usage_account_recovered"
 RESET_STORE_VERSION = 1

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.start import async_at_started
 
 from .api import LocalClaudeCodeProvider, RemoteAnthropicProvider
 from .const import PLATFORMS, PROVIDER_LOCAL, PROVIDER_REMOTE, CONF_PROVIDER
@@ -19,9 +20,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         provider = RemoteAnthropicProvider(hass, entry)
 
     coordinator = ClaudeUsageCoordinator(hass, entry, provider)
+    await coordinator.reset_tracker.async_load()
     await coordinator.async_config_entry_first_refresh()
     entry.runtime_data = coordinator
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    entry.async_on_unload(async_at_started(hass, coordinator.reset_tracker.async_start))
     return True
 
 

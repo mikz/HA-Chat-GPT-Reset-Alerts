@@ -51,7 +51,8 @@ from .const import (
     OAUTH_SCOPES,
     PROVIDER_LOCAL,
     PROVIDER_REMOTE,
-    UPDATE_INTERVAL_OPTIONS,
+    MIN_UPDATE_INTERVAL,
+    MAX_UPDATE_INTERVAL,
 )
 
 
@@ -133,11 +134,12 @@ class ClaudeUsageConfigFlow(ConfigFlow, domain=DOMAIN):
                     else:
                         account = profile.get("account") if isinstance(profile.get("account"), dict) else {}
                         account_id = account.get("uuid") or account.get("id") or account.get("email")
-                        account_name = account.get("display_name") or account.get("full_name")
+                        account_name = account.get("email") or account.get("display_name") or account.get("full_name")
                         plan = "Max" if account.get("has_claude_max") else "Pro" if account.get("has_claude_pro") else None
-                        if account_id:
-                            await self.async_set_unique_id(f"remote:{account_id}")
-                            self._abort_if_unique_id_configured()
+                        if not account_id:
+                            return self.async_abort(reason="cannot_identify_account")
+                        await self.async_set_unique_id(f"remote:{account_id}")
+                        self._abort_if_unique_id_configured()
                         return self.async_create_entry(
                             title=f"Claude Usage ({account_name or plan or 'Remote'})",
                             data={
@@ -223,13 +225,16 @@ class ClaudeUsageConfigFlow(ConfigFlow, domain=DOMAIN):
                 else:
                     account = profile.get("account") if isinstance(profile.get("account"), dict) else {}
                     entry = self._get_reauth_entry()
+                    account_id = account.get("uuid") or account.get("id") or account.get("email")
+                    if not account_id or account_id != entry.data.get(CONF_ACCOUNT_ID):
+                        return self.async_abort(reason="wrong_account")
                     new_data = {
                         **entry.data,
                         CONF_ACCESS_TOKEN: token["access_token"],
                         CONF_REFRESH_TOKEN: token.get("refresh_token", ""),
                         CONF_EXPIRES_AT: time.time() + float(token.get("expires_in", 3600)),
                         CONF_ACCOUNT_ID: account.get("uuid") or account.get("id") or account.get("email"),
-                        CONF_ACCOUNT_NAME: account.get("display_name") or account.get("full_name"),
+                        CONF_ACCOUNT_NAME: account.get("email") or account.get("display_name") or account.get("full_name"),
                         CONF_SUBSCRIPTION_LEVEL: "Max" if account.get("has_claude_max") else "Pro" if account.get("has_claude_pro") else None,
                     }
                     return self.async_update_reload_and_abort(entry, data_updates=new_data)
@@ -293,7 +298,7 @@ class ClaudeUsageOptionsFlow(OptionsFlowWithReload):
             vol.Required(
                 CONF_UPDATE_INTERVAL,
                 default=current.get(CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL),
-            ): vol.In(UPDATE_INTERVAL_OPTIONS)
+            ): vol.All(vol.Coerce(int), vol.Range(min=MIN_UPDATE_INTERVAL, max=MAX_UPDATE_INTERVAL))
         }
         if provider_name == PROVIDER_LOCAL:
             schema.update(
