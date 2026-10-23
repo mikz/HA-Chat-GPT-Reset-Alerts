@@ -86,10 +86,30 @@ async def test_uncertain_network_failure_never_retries(hass, aioclient_mock, fai
 
 
 @pytest.mark.asyncio
-async def test_non_sse_response_is_rejected(hass, aioclient_mock):
-    aioclient_mock.post(CODEX_RESPONSES_API_URL, json=completion())
-    with pytest.raises(ProviderSchemaError):
+@pytest.mark.parametrize("content_type", [
+    None, "TEXT/EVENT-STREAM; charset=UTF-8", "application/octet-stream", "application/json",
+])
+async def test_sse_completion_is_validated_independently_of_mime_header(hass, aioclient_mock, content_type):
+    headers = {"Content-Type": content_type} if content_type else {}
+    aioclient_mock.post(CODEX_RESPONSES_API_URL, text=sse(completion()), headers=headers)
+    assert await OpenAIAuthClient(aiohttp_client.async_get_clientsession(hass)).async_start_usage_window(credentials()) == {
+        "model": START_WINDOW_MODEL, "total_tokens": 7,
+    }
+    assert aioclient_mock.call_count == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("body,content_type", [
+    (json.dumps(completion()), "application/json"),
+    ("<html>private-provider-body</html>", "text/html"),
+    ("private-provider-body", "text/event-stream"),
+])
+async def test_non_sse_body_cannot_fake_a_completion_or_trigger_retry(hass, aioclient_mock, body, content_type):
+    aioclient_mock.post(CODEX_RESPONSES_API_URL, text=body, headers={"Content-Type": content_type})
+    with pytest.raises(ProviderConnectionError, match="before completion") as raised:
         await OpenAIAuthClient(aiohttp_client.async_get_clientsession(hass)).async_start_usage_window(credentials())
+    assert "private" not in str(raised.value)
+    assert aioclient_mock.call_count == 1
 
 
 @pytest.mark.parametrize("event", [

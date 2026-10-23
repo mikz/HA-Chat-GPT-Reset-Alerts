@@ -339,9 +339,7 @@ class OpenAIAuthClient:
                         )
                     if response.status != 200:
                         raise ProviderError(f"OpenAI inference request failed ({response.status})")
-                    content_type = response.headers.get("Content-Type", "").split(";", 1)[0].strip()
-                    if content_type != "text/event-stream":
-                        raise ProviderSchemaError("OpenAI returned an unsupported inference response")
+                    # Codex parses SSE bytes directly; proxies may vary or omit the MIME header.
                     return await _async_start_window_result(response)
         except (aiohttp.ClientError, TimeoutError, ValueError):
             raise ProviderConnectionError(

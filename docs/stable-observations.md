@@ -1,6 +1,6 @@
 # Stable quota observations
 
-ChatGPT Usage 0.1.6 keeps existing account and entity identifiers.
+ChatGPT Usage 0.1.7 keeps existing account and entity identifiers.
 
 ## Start an idle weekly window
 
