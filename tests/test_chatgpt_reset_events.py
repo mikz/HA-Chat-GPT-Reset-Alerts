@@ -32,7 +32,8 @@ def coordinator_class(monkeypatch):
         "homeassistant.helpers": {},
         "homeassistant.config_entries": {"ConfigEntry": object},
         "homeassistant.core": {"HomeAssistant": object},
-        "homeassistant.exceptions": {"ConfigEntryAuthFailed": Exception},
+        "homeassistant.exceptions": {"ConfigEntryAuthFailed": Exception, "HomeAssistantError": Exception},
+        "homeassistant.helpers.event": {"async_call_later": Mock()},
         "homeassistant.helpers.storage": {"Store": object},
         "homeassistant.helpers.update_coordinator": {
             "DataUpdateCoordinator": CoordinatorBase,
@@ -91,6 +92,7 @@ def _coordinator(coordinator_class, entry_id="entry-a", title="Personal", provid
     coordinator._pending_events = []
     coordinator._ready = True
     coordinator._history_imported = True
+    coordinator.start_usage_result = {}
     return coordinator
 
 

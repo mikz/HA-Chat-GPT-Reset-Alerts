@@ -17,6 +17,7 @@ from homeassistant.helpers import aiohttp_client
 
 from .const import (
     ACCOUNTS_API_URL,
+    CODEX_RESPONSES_API_URL,
     CONF_ACCESS_TOKEN,
     CONF_ACCOUNT_ID,
     CONF_API_KEY,
@@ -41,6 +42,8 @@ from .const import (
     PROVIDER_REMOTE,
     REQUEST_TIMEOUT_SECONDS,
     RESET_CREDITS_API_URL,
+    START_WINDOW_MAX_RESPONSE_BYTES,
+    START_WINDOW_MODEL,
     USAGE_API_URL,
     USER_AGENT,
 )
@@ -163,7 +166,7 @@ def credentials_from_token_response(
 
 
 class OpenAIAuthClient:
-    """Device OAuth and read-only OpenAI API operations."""
+    """Device OAuth, usage readings, and explicitly requested minimal inference."""
 
     def __init__(self, session: aiohttp.ClientSession) -> None:
         self.session = session
@@ -303,6 +306,48 @@ class OpenAIAuthClient:
                 data = replace(data, reset_credit_expiries=expiries)
         return data, current
 
+    async def async_start_usage_window(self, credentials: OpenAICredentials) -> dict[str, Any]:
+        """Make one tiny subscription request; never retry an uncertain inference."""
+        # Match openai/codex ResponsesApiRequest; developer instructions are input messages.
+        body = {
+            "model": START_WINDOW_MODEL,
+            "stream": True,
+            "input": [
+                {"type": "message", "role": "developer", "content": [{"type": "input_text", "text": "Reply briefly."}]},
+                {"type": "message", "role": "user", "content": [{"type": "input_text", "text": "Reply OK."}]},
+            ],
+            "tools": [],
+            "tool_choice": "none",
+            "parallel_tool_calls": False,
+            "reasoning": {"effort": "low"},
+            "store": False,
+            "include": [],
+        }
+        headers = {**self._headers(credentials), "Accept": "text/event-stream"}
+        try:
+            async with asyncio.timeout(REQUEST_TIMEOUT_SECONDS):
+                async with self.session.post(
+                    CODEX_RESPONSES_API_URL, json=body, headers=headers, allow_redirects=False,
+                ) as response:
+                    if response.status in (401, 403):
+                        raise ProviderAuthError("OpenAI rejected the stored credentials")
+                    if response.status == 429:
+                        raise ProviderRateLimited(_retry_after_seconds(response))
+                    if response.status >= 500:
+                        raise ProviderConnectionError(
+                            f"OpenAI inference service returned HTTP {response.status}"
+                        )
+                    if response.status != 200:
+                        raise ProviderError(f"OpenAI inference request failed ({response.status})")
+                    content_type = response.headers.get("Content-Type", "").split(";", 1)[0].strip()
+                    if content_type != "text/event-stream":
+                        raise ProviderSchemaError("OpenAI returned an unsupported inference response")
+                    return await _async_start_window_result(response)
+        except (aiohttp.ClientError, TimeoutError, ValueError):
+            raise ProviderConnectionError(
+                "OpenAI inference did not complete; usage may have been consumed"
+            ) from None
+
     async def _async_reset_credit_details(
         self, credentials: OpenAICredentials
     ) -> dict[str, Any] | None:
@@ -377,21 +422,85 @@ class OpenAIAuthClient:
         return headers
 
 
+async def _async_start_window_result(response: aiohttp.ClientResponse) -> dict[str, Any]:
+    """Read bounded SSE events, retaining no generated text or provider error bodies."""
+    received = 0
+    pending = b""
+    data: list[bytes] = []
+    async for chunk in response.content.iter_chunked(4096):
+        received += len(chunk)
+        if received > START_WINDOW_MAX_RESPONSE_BYTES:
+            raise ProviderSchemaError("OpenAI inference response exceeded the size limit")
+        pending += chunk
+        while b"\n" in pending:
+            line, pending = pending.split(b"\n", 1)
+            line = line.rstrip(b"\r")
+            if line.startswith(b"data:"):
+                data.append(line[5:].removeprefix(b" "))
+            elif not line and data:
+                result = _start_window_event(b"\n".join(data))
+                data = []
+                if result is not None:
+                    return result
+    raise ProviderConnectionError("OpenAI inference stream ended before completion; usage may have been consumed")
+
+
+def _start_window_event(data: bytes) -> dict[str, Any] | None:
+    try:
+        event = json.loads(data)
+    except (ValueError, UnicodeDecodeError):
+        raise ProviderSchemaError("OpenAI returned an invalid inference event") from None
+    if not isinstance(event, dict) or not isinstance(event.get("type"), str):
+        raise ProviderSchemaError("OpenAI returned an invalid inference event")
+    if event["type"] in ("error", "response.failed", "response.incomplete"):
+        raise ProviderError("OpenAI inference failed or was incomplete; usage may have been consumed")
+    if event["type"] != "response.completed":
+        return None
+    response = event.get("response")
+    if (
+        not isinstance(response, dict)
+        or not isinstance(response.get("id"), str)
+        or not response["id"]
+        or response.get("status", "completed") != "completed"
+    ):
+        raise ProviderSchemaError("OpenAI returned an invalid inference completion")
+    usage = response.get("usage")
+    total = usage.get("total_tokens") if isinstance(usage, dict) else None
+    return {
+        "model": START_WINDOW_MODEL,
+        "total_tokens": total if type(total) is int and total >= 0 else None,
+    }
+
+
 class RemoteOpenAIProvider:
     def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
         self.hass = hass
         self.entry = entry
         self.client = OpenAIAuthClient(aiohttp_client.async_get_clientsession(hass))
+        self._lock = asyncio.Lock()
 
     async def async_get_usage(self) -> ChatGPTUsageData:
-        current = credentials_from_entry(self.entry)
-        data, refreshed = await self.client.async_get_usage(current)
-        if refreshed != current:
-            self.hass.config_entries.async_update_entry(
-                self.entry,
-                data={**self.entry.data, **credentials_to_entry_data(refreshed)},
-            )
-        return data
+        async with self._lock:
+            current = credentials_from_entry(self.entry)
+            data, refreshed = await self.client.async_get_usage(current)
+            if refreshed != current:
+                self.hass.config_entries.async_update_entry(
+                    self.entry,
+                    data={**self.entry.data, **credentials_to_entry_data(refreshed)},
+                )
+            return data
+
+    async def async_start_usage_window(self) -> dict[str, Any]:
+        async with self._lock:
+            current = credentials_from_entry(self.entry)
+            if current.expires_at <= time.time() + 300:
+                current = await self.client.async_refresh(current)
+                # Refresh tokens may rotate even when the following inference fails.
+                self.hass.config_entries.async_update_entry(
+                    self.entry,
+                    data={**self.entry.data, **credentials_to_entry_data(current)},
+                )
+            return await self.client.async_start_usage_window(current)
 
     async def async_close(self) -> None:
         return None

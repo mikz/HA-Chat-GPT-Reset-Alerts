@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
@@ -9,7 +10,8 @@ from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import ConfigEntryAuthFailed
+from homeassistant.exceptions import ConfigEntryAuthFailed, HomeAssistantError
+from homeassistant.helpers.event import async_call_later
 from homeassistant.helpers.storage import Store
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
@@ -61,7 +63,8 @@ class ChatGPTUsageCoordinator(DataUpdateCoordinator[ChatGPTUsageData]):
             else RemoteOpenAIProvider(hass, entry)
         )
         self._store = Store[dict[str, Any]](
-            hass, STORAGE_VERSION, STORAGE_KEY_TEMPLATE.format(entry_id=entry.entry_id)
+            hass, STORAGE_VERSION, STORAGE_KEY_TEMPLATE.format(entry_id=entry.entry_id),
+            atomic_writes=True,
         )
         self._window_state: dict[str, PersistedWindowState] = {}
         self._backoff_until: datetime | None = None
@@ -73,9 +76,14 @@ class ChatGPTUsageCoordinator(DataUpdateCoordinator[ChatGPTUsageData]):
         self._pending_events: list[dict[str, Any]] = []
         self._ready = False
         self._history_imported = False
+        self._start_lock = asyncio.Lock()
+        self.start_usage_result: dict[str, Any] = {}
 
     async def async_initialize(self) -> None:
         stored = await self._store.async_load() or {}
+        self.start_usage_result = stored.get("start_usage_result", {})
+        if not isinstance(self.start_usage_result, dict):
+            self.start_usage_result = {}
         raw = stored.get("windows") or {}
         if isinstance(raw, dict):
             self._window_state = {
@@ -139,6 +147,14 @@ class ChatGPTUsageCoordinator(DataUpdateCoordinator[ChatGPTUsageData]):
         ))
         self.account_status = account_status(data, self._window_state)
         changed = False
+        if self.start_usage_result.get("status") in ("requested", "accepted", "unconfirmed"):
+            weekly = next((w for w in data.windows if w.is_main and w.duration_seconds == 604800), None)
+            if weekly and weekly.reset_status == "scheduled" and weekly.reset_at and weekly.reset_at > now:
+                self.start_usage_result.update(
+                    status="confirmed", reset_at=weekly.reset_at.isoformat(),
+                    confirmed_at=now.isoformat(),
+                )
+                changed = True
         for window in data.windows:
             previous = self._window_state.get(window.id)
             if previous is None:
@@ -204,6 +220,50 @@ class ChatGPTUsageCoordinator(DataUpdateCoordinator[ChatGPTUsageData]):
         """Ordinary allowance only; incomplete readings remain unknown."""
         return ordinary_limit_reached(self.data, self._window_state) if self.data else None
 
+    async def async_start_usage_window(self) -> None:
+        """Send one inference only after a fresh idle-allowance check."""
+        if self.entry.data.get(CONF_PROVIDER) == PROVIDER_LOCAL:
+            raise HomeAssistantError("Starting a weekly window requires Remote OpenAI")
+        if self._start_lock.locked():
+            raise HomeAssistantError("A weekly-window request is already running")
+        async with self._start_lock:
+            await self.async_refresh()
+            requested = parse_datetime(self.start_usage_result.get("requested_at"))
+            if requested and datetime.now(UTC) - requested < timedelta(minutes=5):
+                raise HomeAssistantError("A request was already sent recently; refresh usage before trying again")
+            if not self.last_update_success or self.account_status != "available" or not self.data:
+                raise HomeAssistantError("A fresh reading of available ordinary allowance is required")
+            weekly = next((w for w in self.data.windows if w.is_main and w.duration_seconds == 604800), None)
+            if weekly is None or weekly.reset_status != "awaiting_usage":
+                raise HomeAssistantError("The weekly window is already active or its status is unknown")
+            self.start_usage_result = {"status": "requested", "requested_at": datetime.now(UTC).isoformat()}
+            # Save before inference: a timeout or restart must not silently resend it.
+            await self._async_save_state()
+            # Store logs write failures without raising; a fresh reader verifies the marker.
+            saved = await Store(self.hass, STORAGE_VERSION, self._store.key).async_load()
+            if not saved or saved.get("start_usage_result", {}).get("requested_at") != self.start_usage_result["requested_at"]:
+                raise HomeAssistantError("Could not persist the request; no inference was sent")
+            self.async_update_listeners()
+            try:
+                result = await self.provider.async_start_usage_window()
+            except ProviderError as err:
+                self.start_usage_result.update(status="unconfirmed", error=str(err))
+                await self._async_save_state()
+                raise HomeAssistantError(str(err)) from err
+            else:
+                self.start_usage_result.update(result)
+                if self.start_usage_result["status"] != "confirmed":
+                    self.start_usage_result["status"] = "accepted"
+                await self._async_save_state()
+            finally:
+                # A tiny request may round to 0%; wait beyond the idle timestamp tolerance.
+                self.entry.async_on_unload(async_call_later(self.hass, 70, self._async_confirm_start))
+                self.async_update_listeners()
+            await self.async_refresh()
+
+    async def _async_confirm_start(self, _now: datetime) -> None:
+        await self.async_refresh()
+
     async def _async_save_state(self) -> None:
         await self._store.async_save({
             "windows": {key: value.as_dict() for key, value in self._window_state.items()},
@@ -211,6 +271,7 @@ class ChatGPTUsageCoordinator(DataUpdateCoordinator[ChatGPTUsageData]):
             "last_recovered_at": self.last_recovered_at.isoformat() if self.last_recovered_at else None,
             "pending_events": self._pending_events,
             "history_imported": self._history_imported,
+            "start_usage_result": self.start_usage_result,
         })
 
     async def async_start(self, hass: HomeAssistant) -> None:

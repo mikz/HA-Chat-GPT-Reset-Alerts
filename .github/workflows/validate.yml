@@ -33,6 +33,13 @@ jobs:
 
   runtime:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - ha: "2026.9.4"
+            pytest_ha: "0.13.367"
+          - ha: "2026.10.2"
+            pytest_ha: "0.13.373"
     env:
       COVERAGE_CORE: ctrace
     steps:
@@ -40,8 +47,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.14"
-      - run: pip install homeassistant==2026.9.4 pytest-homeassistant-custom-component==0.13.367 pytest-testmon
-      - run: python -m pytest --testmon-env=ha2026.9.4 -q -o asyncio_mode=auto
+      - run: pip install homeassistant==${{ matrix.ha }} pytest-homeassistant-custom-component==${{ matrix.pytest_ha }} pytest-testmon
+      - run: python -m pytest --testmon-env=ha${{ matrix.ha }} -q -o asyncio_mode=auto
 
 # The source repository tests both components. Release archives and the Claude
 # export each contain one integration for HACS installation.

@@ -20,6 +20,9 @@ OAUTH_DEVICE_REDIRECT_URI: Final = f"{OAUTH_ISSUER}/deviceauth/callback"
 USAGE_API_URL: Final = "https://chatgpt.com/backend-api/wham/usage"
 RESET_CREDITS_API_URL: Final = "https://chatgpt.com/backend-api/wham/rate-limit-reset-credits"
 ACCOUNTS_API_URL: Final = "https://chatgpt.com/backend-api/wham/accounts/check"
+CODEX_RESPONSES_API_URL: Final = "https://chatgpt.com/backend-api/codex/responses"
+START_WINDOW_MODEL: Final = "gpt-6-luna"
+START_WINDOW_MAX_RESPONSE_BYTES: Final = 65536
 
 CONF_ACCESS_TOKEN: Final = "access_token"
 CONF_REFRESH_TOKEN: Final = "refresh_token"

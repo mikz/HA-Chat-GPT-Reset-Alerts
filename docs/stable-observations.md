@@ -1,6 +1,34 @@
 # Stable quota observations
 
-ChatGPT Usage 0.1.5 keeps existing account and entity identifiers.
+ChatGPT Usage 0.1.6 keeps existing account and entity identifiers.
+
+## Start an idle weekly window
+
+Remote OpenAI accounts have a **Start weekly window** button. Pressing it checks
+usage first, then sends one short `gpt-6-luna` request with tools disabled and low
+reasoning. This consumes real subscription usage. It requires available ordinary
+allowance and an idle weekly window; it does not apply a banked reset.
+
+The button's attributes record `requested_at`, `status`, `model`, and `total_tokens`
+when reported. `accepted` means inference completed; `confirmed` means a subsequent
+usage reading supplied a fixed future weekly deadline. Confirmation also records
+`reset_at` and `confirmed_at`. The existing reset sensor supplies the dashboard's
+absolute and relative deadline and its history.
+
+Usage refreshes immediately after success and once more after 70 seconds. The later
+check handles tiny requests that round to 0% usage: the deadline must stop moving
+before it can be distinguished from the provider's idle placeholder. Regular
+configurable polling continues, including provider backoff. No deadline is invented.
+
+Concurrent presses and attempts within five minutes are rejected. The request
+marker is saved before inference and survives reloads. A timeout or incomplete
+response records `unconfirmed`: usage may have been consumed. The integration
+never retries inference automatically. Its 20-second timeout and bounded response
+reader limit local waiting; the provider contract has no hard output-token limit.
+Starting activity does not emit a reset or recovered event by itself.
+
+The request follows the official Codex [Responses contract](https://github.com/openai/codex/blob/30587d78850abf2bfc484ffb0ab0f71497cc9c05/codex-rs/codex-api/src/common.rs)
+and [tool-less request example](https://github.com/openai/codex/blob/30587d78850abf2bfc484ffb0ab0f71497cc9c05/codex-rs/ext/guardian-v2/src/async_scorer/sampler.rs#L244).
 
 ## Credit history
 
@@ -145,8 +173,8 @@ the coordinator and respects provider rate-limit backoff.
 
 ## Release and rollback
 
-Run the Testmon suite and Ruff before publishing. The HA runtime job covers the
-deployed 2026.9.4 version. Build the HACS artifact with:
+Run the Testmon suite and Ruff before publishing. The HA runtime jobs cover
+2026.9.4 and the deployed 2026.10.2 version. Build the HACS artifact with:
 
 ```sh
 python scripts/build_release.py
@@ -158,7 +186,7 @@ HACS installs the archive into `/config/custom_components/chatgpt_usage`.
 
 When switching from the upstream HACS repository, remove only its downloaded
 package through HACS, then install this fork before restarting. Preserve the
-three integration config entries; deleting those also deletes their entity registry
+existing integration config entries; deleting those also deletes their entity registry
 records. Save the dashboard and automation definitions before changing them.
 
 To roll back the package, reinstall the previously working fork release through
