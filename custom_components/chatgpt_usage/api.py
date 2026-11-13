@@ -21,6 +21,7 @@ from .const import (
     CONF_ACCESS_TOKEN,
     CONF_ACCOUNT_ID,
     CONF_API_KEY,
+    CONF_EMAIL,
     CONF_EXPIRES_AT,
     CONF_FEDRAMP,
     CONF_HOST,
@@ -101,6 +102,7 @@ class OpenAICredentials:
     user_id: str | None = None
     plan_type: str | None = None
     fedramp: bool = False
+    email: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -116,12 +118,19 @@ class UsageProvider(Protocol):
 
 
 def credentials_from_entry(entry: ConfigEntry) -> OpenAICredentials:
+    email = entry.data.get(CONF_EMAIL)
+    if not email and entry.data.get(CONF_ID_TOKEN):
+        try:
+            email = _decode_jwt_payload(str(entry.data[CONF_ID_TOKEN])).get("email")
+        except ProviderAuthError:
+            pass
     return OpenAICredentials(
         access_token=str(entry.data.get(CONF_ACCESS_TOKEN) or ""),
         refresh_token=str(entry.data.get(CONF_REFRESH_TOKEN) or ""),
         id_token=str(entry.data.get(CONF_ID_TOKEN) or ""),
         expires_at=float(entry.data.get(CONF_EXPIRES_AT) or 0),
         account_id=str(entry.data.get(CONF_ACCOUNT_ID) or ""),
+        email=email if isinstance(email, str) else None,
         user_id=entry.data.get(CONF_USER_ID),
         plan_type=entry.data.get(CONF_PLAN_TYPE),
         fedramp=bool(entry.data.get(CONF_FEDRAMP, False)),
@@ -135,6 +144,7 @@ def credentials_to_entry_data(credentials: OpenAICredentials) -> dict[str, Any]:
         CONF_ID_TOKEN: credentials.id_token,
         CONF_EXPIRES_AT: credentials.expires_at,
         CONF_ACCOUNT_ID: credentials.account_id,
+        CONF_EMAIL: credentials.email,
         CONF_USER_ID: credentials.user_id,
         CONF_PLAN_TYPE: credentials.plan_type,
         CONF_FEDRAMP: credentials.fedramp,
@@ -159,6 +169,7 @@ def credentials_from_token_response(
         id_token=id_token,
         expires_at=claims["expires_at"],
         account_id=previous.account_id if previous else claims["account_id"],
+        email=claims.get("email") or (previous.email if previous else None),
         user_id=claims.get("user_id") or (previous.user_id if previous else None),
         plan_type=claims.get("plan_type"),
         fedramp=bool(claims.get("fedramp", False)),
@@ -599,6 +610,7 @@ def _claims_from_tokens(id_token: str, access_token: str) -> dict[str, Any]:
     except (TypeError, ValueError):
         expires_at = time.time() + 3600
     return {
+        "email": id_claims.get("email") if isinstance(id_claims.get("email"), str) else None,
         "account_id": str(account_id),
         "user_id": str(auth.get("chatgpt_user_id") or auth.get("user_id") or "") or None,
         "plan_type": str(auth.get("chatgpt_plan_type") or "") or None,

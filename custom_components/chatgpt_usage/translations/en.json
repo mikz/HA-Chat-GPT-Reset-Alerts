@@ -15,11 +15,23 @@
     "event": {
       "reset_event": {
         "name": "Reset events",
-        "state_attributes": {"event_type": {"state": {"reset": "Reset observed"}}}
+        "state_attributes": {
+          "event_type": {
+            "state": {
+              "reset": "Reset observed"
+            }
+          }
+        }
       },
       "recovery_event": {
         "name": "Recovery events",
-        "state_attributes": {"event_type": {"state": {"recovered": "Ordinary allowance usable again"}}}
+        "state_attributes": {
+          "event_type": {
+            "state": {
+              "recovered": "Ordinary allowance usable again"
+            }
+          }
+        }
       }
     }
   },
@@ -28,7 +40,9 @@
       "user": {
         "title": "Choose connection method",
         "description": "Remote OpenAI works without your PC. Local Codex reads usage through the Windows helper.",
-        "data": {"provider": "Connection method"}
+        "data": {
+          "provider": "Connection method"
+        }
       },
       "remote": {
         "title": "Start OpenAI sign-in",
@@ -36,13 +50,17 @@
       },
       "device": {
         "title": "Connect OpenAI account",
-        "description": "Open {verification_url} and enter code **{user_code}**. After approving access, return here and confirm.",
-        "data": {"confirm": "I completed OpenAI sign-in"}
+        "description": "Open {verification_url} and enter code **{user_code}**. After approving access, return here and confirm. The account will be shown for confirmation after sign-in.",
+        "data": {
+          "confirm": "I completed OpenAI sign-in"
+        }
       },
       "workspace": {
         "title": "Choose ChatGPT workspace",
         "description": "Select the workspace whose Codex usage Home Assistant should monitor.",
-        "data": {"account_id": "Workspace"}
+        "data": {
+          "account_id": "Workspace"
+        }
       },
       "local": {
         "title": "Connect local Codex helper",
@@ -62,6 +80,17 @@
           "api_key": "API key",
           "use_https": "Use HTTPS"
         }
+      },
+      "reauth_device": {
+        "title": "Reconnect OpenAI account",
+        "description": "Sign in as **{account}**. Open {verification_url} and enter code **{user_code}**. After approving access, return here and confirm.",
+        "data": {
+          "confirm": "I completed OpenAI sign-in"
+        }
+      },
+      "confirm_account": {
+        "title": "Confirm OpenAI account",
+        "description": "Signed in as **{account}**.\n\nWorkspace: {workspace}\n\nSubmit to monitor this account, or close this dialog to cancel."
       }
     },
     "error": {
@@ -78,7 +107,8 @@
       "cannot_connect": "Unable to connect to OpenAI.",
       "unknown": "OpenAI returned an unexpected response.",
       "device_flow_expired": "The device login expired. Start setup again.",
-      "reauth_successful": "Authentication updated successfully."
+      "reauth_successful": "Authentication updated successfully.",
+      "wrong_account": "Sign in with the same OpenAI account as the integration you are reconnecting."
     }
   },
   "options": {

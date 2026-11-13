@@ -4,7 +4,7 @@ from typing import Final
 
 DOMAIN: Final = "chatgpt_usage"
 NAME: Final = "ChatGPT Usage"
-VERSION: Final = "0.1.5"
+VERSION: Final = "0.1.8"
 
 PROVIDER_REMOTE: Final = "remote"
 PROVIDER_LOCAL: Final = "local"

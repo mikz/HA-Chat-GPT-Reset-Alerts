@@ -6,6 +6,7 @@ from collections.abc import Mapping
 from typing import Any
 
 _SECRET_KEYS = {
+    "email",
     "access_token",
     "refresh_token",
     "id_token",

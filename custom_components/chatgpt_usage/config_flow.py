@@ -23,6 +23,7 @@ from .api import (
     ProviderConnectionError,
     ProviderError,
     ProviderSchemaError,
+    credentials_from_entry,
     credentials_to_entry_data,
 )
 from .const import (
@@ -102,7 +103,7 @@ class ChatGPTUsageConfigFlow(ConfigFlow, domain=DOMAIN):
         if self._device_code is None:
             return self.async_abort(reason="device_flow_expired")
         errors: dict[str, str] = {}
-        if user_input is not None:
+        if user_input is not None and user_input.get("confirm"):
             try:
                 authorization = await self._auth_client.async_poll_device_code(self._device_code)
                 credentials = await self._auth_client.async_exchange_device_code(authorization)
@@ -116,9 +117,13 @@ class ChatGPTUsageConfigFlow(ConfigFlow, domain=DOMAIN):
             except ProviderError:
                 errors["base"] = "unknown"
         return self.async_show_form(
-            step_id="device",
+            step_id="reauth_device" if self._reauth else "device",
             data_schema=vol.Schema({vol.Required("confirm", default=False): bool}),
             description_placeholders={
+                "account": (
+                    credentials_from_entry(self._reauth_entry).email
+                    or self._reauth_entry.title
+                ) if self._reauth_entry else "",
                 "verification_url": self._device_code.verification_url,
                 "user_code": self._device_code.user_code,
             },
@@ -133,10 +138,10 @@ class ChatGPTUsageConfigFlow(ConfigFlow, domain=DOMAIN):
         if self._reauth and self._reauth_entry is not None:
             existing_id = self._reauth_entry.data.get(CONF_ACCOUNT_ID)
             if isinstance(existing_id, str) and existing_id:
-                return await self._finish_remote(replace(credentials, account_id=existing_id))
+                return await self._confirm_remote(replace(credentials, account_id=existing_id))
         if len(accounts) <= 1:
             selected = replace(credentials, account_id=accounts[0].account_id) if accounts else credentials
-            return await self._finish_remote(selected)
+            return await self._confirm_remote(selected)
         self._credentials = credentials
         self._accounts = accounts
         return await self.async_step_workspace()
@@ -155,8 +160,33 @@ class ChatGPTUsageConfigFlow(ConfigFlow, domain=DOMAIN):
             )
         if self._credentials is None:
             return self.async_abort(reason="device_flow_expired")
-        return await self._finish_remote(
+        return await self._confirm_remote(
             replace(self._credentials, account_id=str(user_input[CONF_ACCOUNT_ID]))
+        )
+
+    async def async_step_reauth_device(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+        return await self.async_step_device(user_input)
+
+    async def _confirm_remote(self, credentials: OpenAICredentials) -> ConfigFlowResult:
+        if self._reauth_entry is not None:
+            unique_id = f"remote:{credentials.account_id}:{credentials.user_id or 'account'}"
+            if unique_id != self._reauth_entry.unique_id:
+                return self.async_abort(reason="wrong_account")
+        self._credentials = credentials
+        return await self.async_step_confirm_account()
+
+    async def async_step_confirm_account(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+        if self._credentials is None:
+            return self.async_abort(reason="device_flow_expired")
+        if user_input is not None:
+            return await self._finish_remote(self._credentials)
+        return self.async_show_form(
+            step_id="confirm_account",
+            data_schema=vol.Schema({}),
+            description_placeholders={
+                "account": self._credentials.email or self._credentials.user_id or self._credentials.account_id,
+                "workspace": self._credentials.account_id,
+            },
         )
 
     async def _finish_remote(self, credentials: OpenAICredentials) -> ConfigFlowResult:
@@ -170,16 +200,18 @@ class ChatGPTUsageConfigFlow(ConfigFlow, domain=DOMAIN):
             return self.async_abort(reason="unknown")
 
         unique_id = f"remote:{credentials.account_id}:{credentials.user_id or 'account'}"
+        title = f"ChatGPT Usage ({credentials.email or credentials.user_id or credentials.account_id})"
         await self.async_set_unique_id(unique_id)
         if self._reauth and self._reauth_entry is not None:
             self._abort_if_unique_id_mismatch()
             return self.async_update_reload_and_abort(
                 self._reauth_entry,
+                title=title if self._reauth_entry.title == "ChatGPT Usage" else self._reauth_entry.title,
                 data_updates={CONF_PROVIDER: PROVIDER_REMOTE, **credentials_to_entry_data(credentials)},
             )
         self._abort_if_unique_id_configured()
         return self.async_create_entry(
-            title="ChatGPT Usage",
+            title=title,
             data={CONF_PROVIDER: PROVIDER_REMOTE, **credentials_to_entry_data(credentials)},
             options={CONF_UPDATE_INTERVAL: DEFAULT_UPDATE_INTERVAL},
         )
